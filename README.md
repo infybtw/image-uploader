@@ -36,7 +36,7 @@ Both targets use Manifest V3. WXT generates a background script for Firefox and 
 ### Tampermonkey
 
 1. Install a current version of [Tampermonkey](https://www.tampermonkey.net/) in your browser and enable userscript execution if prompted.
-2. Open [the latest userscript](https://github.com/infybtw/ImageUploader/releases/latest/download/imageuploader.user.js) and confirm installation in Tampermonkey. This link becomes available after the first release.
+2. Open [the latest userscript](https://github.com/infybtw/image-uploader/releases/latest/download/imageuploader.user.js) and confirm installation in Tampermonkey. This link becomes available after the first release.
 3. Alternatively, build with `bun run build:userscript` (also included in `bun run build`), create a new script in the Tampermonkey dashboard, replace the template with the **entire contents** of `dist/imageuploader.user.js`, and save it with **Ctrl+S**.
 4. Allow access to `twir.app` if prompted, then reload Twitch/Kick tabs.
 

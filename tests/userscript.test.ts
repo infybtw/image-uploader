@@ -131,8 +131,8 @@ test("userscript is a self-contained installable bundle without extension runtim
     expect(script.startsWith("// ==UserScript==\n")).toBe(true);
     for (const line of [
       `// @version      ${manifest.version}`,
-      "// @updateURL    https://github.com/infybtw/ImageUploader/releases/latest/download/imageuploader.meta.js",
-      "// @downloadURL  https://github.com/infybtw/ImageUploader/releases/latest/download/imageuploader.user.js",
+      "// @updateURL    https://github.com/infybtw/image-uploader/releases/latest/download/imageuploader.meta.js",
+      "// @downloadURL  https://github.com/infybtw/image-uploader/releases/latest/download/imageuploader.user.js",
       "// @match        https://*.twitch.tv/*",
       "// @match        https://*.kick.com/*",
       "// @connect      twir.app",

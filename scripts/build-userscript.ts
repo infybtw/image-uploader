@@ -2,7 +2,7 @@ import { join } from "node:path";
 import manifest from "../extension/manifest.json";
 import { SITE_MATCHES } from "../src/shared";
 
-const releaseUrl = "https://github.com/infybtw/ImageUploader/releases/latest/download";
+const releaseUrl = "https://github.com/infybtw/image-uploader/releases/latest/download";
 
 export async function buildUserscript(outdir = "dist") {
   const metadata = [
