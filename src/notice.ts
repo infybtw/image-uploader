@@ -2,7 +2,8 @@ import { createCopyButton } from "./copy-button";
 
 export function createNotice() {
   const host = document.createElement("div");
-  host.style.cssText = "all:initial;position:fixed;top:20px;right:20px;z-index:2147483647;max-width:calc(100vw - 40px)";
+  host.style.cssText =
+    "all:initial;position:fixed;top:20px;right:20px;z-index:2147483647;max-width:calc(100vw - 40px)";
   const root = host.attachShadow({ mode: "closed" });
   const style = document.createElement("style");
   style.textContent = `

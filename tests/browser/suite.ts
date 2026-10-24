@@ -1,7 +1,9 @@
 import { captureInsertionPoint, findEditor } from "../../src/editor";
+import { browser } from "wxt/browser";
 import { serializeImage } from "../../src/clipboard";
 import { errorMessage } from "../../src/shared";
 import { createCopyButton } from "../../src/copy-button";
+import type { UploadReply } from "../../src/shared";
 
 // This File was created by a page script, not by the extension's isolated world.
 const pageFile = (document.getElementById("page-file") as HTMLInputElement).files![0]!;
@@ -34,7 +36,9 @@ function textarea(value = "hello world") {
 test("textarea: replaces the captured selection and emits input", () => {
   const field = textarea();
   let input = false;
-  field.addEventListener("input", () => { input = true; });
+  field.addEventListener("input", () => {
+    input = true;
+  });
   const point = captureInsertionPoint(field);
   assert(point.insert("https://twir.app/u/test"), "insertion failed");
   assert(field.value === "hello https://twir.app/u/test", `unexpected value: ${field.value}`);
@@ -65,10 +69,15 @@ test("contenteditable: inserts plain text into nested markup and emits input", (
   window.getSelection()!.removeAllRanges();
   window.getSelection()!.addRange(range);
   let input = false;
-  field.addEventListener("input", () => { input = true; });
+  field.addEventListener("input", () => {
+    input = true;
+  });
   assert(findEditor(span) === field, "nested editable not resolved");
   assert(captureInsertionPoint(field).insert("https://twir.app/u/test"), "insertion failed");
-  assert(field.textContent === "hello https://twir.app/u/test", `unexpected text: ${field.textContent}`);
+  assert(
+    field.textContent === "hello https://twir.app/u/test",
+    `unexpected text: ${field.textContent}`,
+  );
   assert(input, "input event was not emitted");
 });
 
@@ -94,7 +103,10 @@ test("lost focus does not steal focus or insert in another field", () => {
   const point = captureInsertionPoint(field);
   const other = textarea("another draft");
   assert(!point.insert("LINK"), "insertion accepted after focus change");
-  assert(document.activeElement === other && other.value === "another draft", "other field changed");
+  assert(
+    document.activeElement === other && other.value === "another draft",
+    "other field changed",
+  );
 });
 
 test("disconnected and newly readonly fields reject insertion", () => {
@@ -137,9 +149,12 @@ test("programmatic rich text change invalidates the insertion point", () => {
 });
 
 async function checkClipboard() {
-  const name = "content script reads a page-owned File across Firefox compartments";
+  const name = "content script reads a page-owned File";
   try {
-    assert(typeof browser.runtime.id === "string", "test must run as an actual extension content script");
+    assert(
+      typeof browser.runtime.id === "string",
+      "test must run as an actual extension content script",
+    );
     const image = await serializeImage(pageFile);
     assert(image.mimeType === "image/png", "wrong image type");
     assert(image.name === "pasted-image.png", "original filename leaked");
@@ -147,6 +162,21 @@ async function checkClipboard() {
     results.push({ name });
   } catch (error) {
     results.push({ name, error: errorMessage(error) });
+  }
+  const backgroundTest =
+    "production background replies asynchronously and rejects non-allowlisted pages";
+  try {
+    const reply: UploadReply = await browser.runtime.sendMessage({
+      type: "upload-image",
+      image: { name: "test.png", mimeType: "image/png", base64: "AAEC/w==" },
+    });
+    assert(
+      reply?.ok === false && reply.error === "Uploads are only allowed on Twitch and Kick.",
+      "background did not enforce the site allowlist",
+    );
+    results.push({ name: backgroundTest });
+  } catch (error) {
+    results.push({ name: backgroundTest, error: errorMessage(error) });
   }
   await checkCopyButtons();
   await fetch("/results", { method: "POST", body: JSON.stringify(results) });
@@ -163,42 +193,72 @@ async function checkCopyButtons() {
   }
   const tick = () => new Promise<void>((resolve) => window.setTimeout(resolve, 0));
 
-  await check("copy button copies its own URL and morphs to a check only after success", async () => {
-    let copied = "";
-    const { promise, resolve } = Promise.withResolvers<void>();
-    const control = createCopyButton("https://twir.app/u/copy-test", (error) => { throw new Error(error); }, (text) => {
-      copied = text;
-      return promise;
-    });
-    document.body.append(control.element);
-    try {
-      const path = control.element.querySelector("path")!;
-      const originalPath = path.getAttribute("d");
-      assert(originalPath, "Morphicons copy icon wasn't rendered");
-      control.element.click();
-      assert(copied === "https://twir.app/u/copy-test", "wrong URL copied");
-      assert(control.element.getAttribute("data-state") === "copying", "check shown before clipboard write finished");
-      assert(path.getAttribute("d") === originalPath, "icon changed before successful copy");
-      resolve();
-      await tick();
-      assert(control.element.getAttribute("data-state") === "copied", "successful copy not indicated");
-      assert(control.element.getAttribute("aria-label") === "Copied", "accessible label not updated");
-      await new Promise((resolve) => window.setTimeout(resolve, 100));
-      assert(path.getAttribute("d") !== originalPath, "Morphicons didn't animate to the check");
-      await new Promise((resolve) => window.setTimeout(resolve, 2_100));
-      assert(control.element.getAttribute("data-state") === "idle", "copy state wasn't restored after two seconds");
-      assert(control.element.getAttribute("aria-label") === "Copy link", "copy label wasn't restored");
-    } finally {
-      control.destroy();
-      control.element.remove();
-    }
-  });
+  await check(
+    "copy button copies its own URL and morphs to a check only after success",
+    async () => {
+      let copied = "";
+      const { promise, resolve } = Promise.withResolvers<void>();
+      const control = createCopyButton(
+        "https://twir.app/u/copy-test",
+        (error) => {
+          throw new Error(error);
+        },
+        (text) => {
+          copied = text;
+          return promise;
+        },
+      );
+      document.body.append(control.element);
+      try {
+        const path = control.element.querySelector("path")!;
+        const originalPath = path.getAttribute("d");
+        assert(originalPath, "Morphicons copy icon wasn't rendered");
+        control.element.click();
+        assert(copied === "https://twir.app/u/copy-test", "wrong URL copied");
+        assert(
+          control.element.getAttribute("data-state") === "copying",
+          "check shown before clipboard write finished",
+        );
+        assert(path.getAttribute("d") === originalPath, "icon changed before successful copy");
+        resolve();
+        await tick();
+        assert(
+          control.element.getAttribute("data-state") === "copied",
+          "successful copy not indicated",
+        );
+        assert(
+          control.element.getAttribute("aria-label") === "Copied",
+          "accessible label not updated",
+        );
+        await new Promise((resolve) => window.setTimeout(resolve, 100));
+        assert(path.getAttribute("d") !== originalPath, "Morphicons didn't animate to the check");
+        await new Promise((resolve) => window.setTimeout(resolve, 2_100));
+        assert(
+          control.element.getAttribute("data-state") === "idle",
+          "copy state wasn't restored after two seconds",
+        );
+        assert(
+          control.element.getAttribute("aria-label") === "Copy link",
+          "copy label wasn't restored",
+        );
+      } finally {
+        control.destroy();
+        control.element.remove();
+      }
+    },
+  );
 
   await check("copy failures keep the copy icon and report the actual error", async () => {
     let message = "";
-    const control = createCopyButton("https://twir.app/u/test", (error) => { message = error; }, async () => {
-      throw new DOMException("Clipboard blocked", "NotAllowedError");
-    });
+    const control = createCopyButton(
+      "https://twir.app/u/test",
+      (error) => {
+        message = error;
+      },
+      async () => {
+        throw new DOMException("Clipboard blocked", "NotAllowedError");
+      },
+    );
     document.body.append(control.element);
     try {
       control.element.click();
@@ -214,7 +274,11 @@ async function checkCopyButtons() {
 
   await check("closing a notice stops pending copy state updates", async () => {
     const { promise, resolve } = Promise.withResolvers<void>();
-    const control = createCopyButton("https://twir.app/u/test", () => {}, () => promise);
+    const control = createCopyButton(
+      "https://twir.app/u/test",
+      () => {},
+      () => promise,
+    );
     document.body.append(control.element);
     control.element.click();
     control.destroy();

@@ -2,76 +2,106 @@
 
 Upload clipboard images on **twitch.tv** and **kick.com**, including subdomains. Images are uploaded anonymously to [Twir Uploader](https://twir.app/uploader), and their links appear in a notification with a copy button. The extension **does not insert links into chat or send messages**.
 
+The project uses **WXT** to generate browser manifests, build entrypoints, and package extensions. **Bun 1.4.4** runs the tooling, tests, native type checker, and formatter. There are no `dev:*` commands or direct `web-ext` dependency; load the built extension manually.
+
 ## Getting started
 
-Requires [Bun](https://bun.sh/) and Firefox **140+**.
+Requires Bun **1.4.4** and Firefox **140+** or Chrome/Chromium **148+**.
 
 ```sh
-bun install
+bun install --frozen-lockfile
 bun run build
 ```
 
-For a reproducible build of the submitted add-on, follow the reviewer instructions below instead of installing dependencies without a frozen lockfile.
+The installation runs `wxt prepare` to generate `.wxt/` types and configuration. The build creates `dist/firefox/` and `dist/chrome/`.
+
+`bunfig.toml` enables `[install] exact = true`, so newly added packages are saved with exact versions rather than `^` or `~` ranges. Keep `bun.lock` committed and use `--frozen-lockfile` for reproducible installs.
+
+### Firefox
 
 1. Open `about:debugging#/runtime/this-firefox`.
-2. Click **Load Temporary Add-on** and select `dist/manifest.json`.
-3. Allow access to Twitch, Kick, and `twir.app` if Firefox asks. Reload any Twitch/Kick tabs that are already open.
-4. Copy an image, focus a chat input, and press **Ctrl+V** (**Cmd+V** on macOS).
-5. Wait for the notification and click the copy button to the right of the link. Paste the link into chat and send the message yourself.
+2. Click **Load Temporary Add-on** and select `dist/firefox/manifest.json`.
+3. Allow access to Twitch, Kick, and `twir.app` if Firefox asks. Reload already open Twitch/Kick tabs.
 
-Context-menu paste and other system paste shortcuts also work: the extension handles the `paste` event rather than intercepting all keystrokes. Normal text pastes are unchanged. Password fields, disabled inputs, and pastes outside an editor are ignored.
+A temporary add-on is removed when Firefox restarts. Permanent installation in standard Firefox requires signing through Mozilla Add-ons, including for unlisted distribution. The generated ZIP is not signed.
 
-Uploaded links appear only in the notification, which stays visible until you close it. Chat input content and caret position are left unchanged; the clipboard is overwritten only when you click the copy button. Failed uploads are not retried automatically. Multiple images are uploaded sequentially, and links to completed uploads remain available if a later upload fails.
+### Chrome / Chromium
 
-Each link has a copy button on its right. After a successful copy, the icon morphs into a green checkmark and changes back after 2 seconds. The animation uses Morphicons with Lucide icons and respects your system's reduced-motion preference. Copying only happens on click and requires no additional clipboard permissions.
+1. Open `chrome://extensions` and enable **Developer mode**.
+2. Click **Load unpacked** and select the **`dist/chrome/` directory**, not its manifest or ZIP file.
+3. Reload already open Twitch/Kick tabs.
+
+Both targets use Manifest V3. WXT generates a background script for Firefox and a service worker for Chrome. Chrome's minimum version remains **148**.
+
+### Usage
+
+1. Copy an image, focus a chat input, and press **Ctrl+V** (**Cmd+V** on macOS).
+2. Wait for the notification and click the copy button to the right of the link.
+3. Paste the link into chat and send the message yourself.
+
+Context-menu paste and other system paste shortcuts also work: the extension handles the `paste` event. Normal text pastes are unchanged. Password fields, disabled inputs, and pastes outside an editor are ignored.
+
+The notification stays visible until you close it. Chat content and caret position are unchanged; the clipboard is overwritten only when you click the copy button. After a successful copy, the Morphicons/Lucide icon morphs into a green checkmark and changes back after 2 seconds. The animation respects reduced-motion preferences.
+
+Multiple images upload sequentially. Failed uploads are not retried automatically; completed links remain available if a later upload fails.
 
 ## Commands
 
 ```sh
-bun run dev         # Build and open a separate Firefox instance with the temporary extension
-bun test            # Tests without network uploads
-bun run test:firefox # Content-script checks in headless Firefox, without uploads to Twir
-bun run typecheck   # TypeScript checks
-bun run lint        # Mozilla addons-linter validation
-bun run package     # Create an unsigned ZIP in artifacts/ for submission to Mozilla
+bun run build          # WXT production builds for both browsers
+bun run build:firefox   # WXT Firefox build in dist/firefox/
+bun run build:chrome    # WXT Chrome build in dist/chrome/
+bun run package        # WXT ZIPs for both browsers and a Firefox sources ZIP
+bun run package:firefox # Firefox extension ZIP and sources ZIP
+bun run package:chrome  # Chrome extension ZIP
+bun test               # Unit, WXT build, and archive tests; no uploads
+bun run test:firefox    # Integration checks in real headless Firefox
+bun run test:chrome     # Integration checks in real headless Chrome/Chromium
+bun run typecheck      # wxt prepare, then native bun check
+bun run lint           # bun fmt --check; does not write files
+bun run format         # Apply bun fmt formatting
+bun run format:check   # Alias for bun fmt --check
 ```
 
-After changing the source, run `bun run build`, reload the extension in `about:debugging`, and reload the page. `bun run dev` uses web-ext to watch `dist/` and reload the extension after a new build.
+After changing source, rebuild, reload the extension in the browser's extension management page, and reload the website. Formatting settings live in `bunfig.toml`. `bun fmt` checks formatting, not semantic lint rules. Mozilla-specific add-on validation is not included in these commands.
 
-A temporary add-on is removed when Firefox restarts. Permanent installation in standard Firefox requires signing through Mozilla Add-ons, including for unlisted distribution. The ZIP created by `package` is not signed.
+## Manifest configuration
+
+- `extension/manifest.json`: shared name, version, description, and host permissions.
+- `extension/firefox.json`: Firefox ID, minimum versions, and data-transmission declaration.
+- `extension/chrome.json`: Chrome minimum version.
+- `scripts/manifest.ts`: combines shared metadata with browser-specific settings.
+- `wxt.config.ts`: passes this metadata to WXT and selects Manifest V3 and browser-specific timeouts.
+- `src/entrypoints/background.ts`, `src/entrypoints/content.ts`: WXT entrypoints. WXT generates `background` and `content_scripts` automatically; these fields should not be added to the shared JSON.
+- `src/shared.ts`: the Twitch/Kick content-script match patterns.
+
+Edit source configuration, not generated manifests inside `dist/`. The Firefox extension ID is preserved so the migration does not create a new add-on identity.
 
 ## Reproducible build instructions for Mozilla reviewers
 
-### Operating system and build environment
+### Operating system and requirements
 
-The reference build environment is **Arch Linux, x86_64, Linux kernel 7.2.11**, with **Bun 1.4.4**. Use Linux x86_64 with a kernel of **5.6 or newer** and a CPU supported by Bun. A graphical desktop and Firefox are **not required** to compile or package the add-on.
+The reference environment is **Arch Linux, x86_64, Linux kernel 7.2.11**. Use Linux x86_64 with a kernel of **5.6 or newer** and a CPU supported by Bun. Firefox and a graphical desktop are not required to build or package the extension.
 
-The installer commands below require Bash, `curl`, `unzip`, and trusted CA certificates. Standard distribution versions of these bootstrap utilities are sufficient; they do not compile the add-on or affect its generated JavaScript. For Debian/Ubuntu, install them with:
+The Bun installer requires Bash, `curl`, `unzip`, and trusted CA certificates. Standard distribution versions suffice; these utilities only bootstrap Bun and do not compile the extension.
 
 ```sh
+# Debian / Ubuntu
 sudo apt-get update
 sudo apt-get install --yes bash curl unzip ca-certificates
 ```
 
-On Arch Linux:
+On Arch Linux, use `sudo pacman -S --needed bash curl unzip ca-certificates`.
 
-```sh
-sudo pacman -S --needed bash curl unzip ca-certificates
-```
+### Exact tool versions and installation
 
-An internet connection is required to download Bun and install the packages recorded in `bun.lock`. Compilation then uses local files only. No Twir account, API token, environment variables, private registry, or running local server is needed. Building does not upload any images.
+| Tool | Version    | Installation and purpose                                                                       |
+| ---- | ---------- | ---------------------------------------------------------------------------------------------- |
+| Bun  | **1.4.4**  | Install below. Runs dependency installation, WXT, tests, native type checking, and formatting. |
+| WXT  | **0.21.4** | Installed locally from `bun.lock`; generates manifests, bundles code, and creates ZIPs.        |
+| Vite | **8.3.5**  | Installed from `bun.lock` as WXT's build backend. No global installation is needed.            |
 
-### Required tools and exact versions
-
-| Tool | Version | Installation and purpose |
-| --- | --- | --- |
-| Bun | **1.4.4** | Install using the version-specific command below. Runs dependency installation, the build script, bundling, and packaging. |
-| TypeScript | **7.0.2** | Installed locally by `bun install --frozen-lockfile`. Used only by the optional type check; Bun compiles the extension. |
-| web-ext | **10.8.0** | Installed locally by the same command. Used for optional Mozilla validation and creating the unsigned ZIP. Run under Bun, not Node.js. |
-
-**Node.js, npm, pnpm, Yarn, a global TypeScript installation, and a global web-ext installation are not required.** The `node:` imports in the build script use Bun's built-in compatibility APIs; they do not require a separate Node.js installation.
-
-Install the exact Bun version, rather than the latest release:
+No separate Node.js, npm, pnpm, Yarn, TypeScript/tsc, or web-ext installation is required. All WXT CLI commands explicitly run under Bun. The `node:` imports in scripts use Bun's compatibility APIs.
 
 ```sh
 curl -fsSL https://bun.sh/install | bash -s "bun-v1.4.4"
@@ -79,91 +109,71 @@ export PATH="$HOME/.bun/bin:$PATH"
 bun --version
 ```
 
-The last command must print **`1.4.4`**. The `export` applies to the current shell; run it again if you open another shell without Bun on its `PATH`.
+The last command must print **`1.4.4`**. Run the `export` again in a new shell if Bun is not on its `PATH`.
 
-### Step-by-step build from the submitted source
+An internet connection is required to install Bun and locked packages. Building then uses local files only. No accounts, API tokens, private registry, `.env` files, or running local server are needed. Building and tests do not upload images.
 
-1. Extract the source archive into a fresh directory. Open a terminal in its root: the directory containing this `README.md`, `package.json`, and `bun.lock`. Do not reuse an existing `dist/` or `node_modules/` directory.
-2. Verify that `bun --version` prints `1.4.4`.
-3. Install **all dependencies, including development dependencies**, using the committed lockfile:
+### Step-by-step build
+
+1. Extract the submitted source ZIP into a fresh directory. Open its root, containing `package.json`, `bun.lock`, `wxt.config.ts`, and this README. Do not reuse `node_modules/`, `.wxt/`, or `dist/` from another checkout.
+2. Verify `bun --version` prints `1.4.4`.
+3. Install all dependencies, including development dependencies, without changing the lockfile:
 
    ```sh
    bun install --frozen-lockfile
    ```
 
-   Do not delete or regenerate `bun.lock`, update dependencies, or use `--production`. Exact direct and transitive versions are recorded in the lockfile; icon dependencies are `lucide` **1.61.0** and `morphicons` **2.0.2**.
+   The root `postinstall` script runs `bun --bun x wxt prepare`. If installation was performed with lifecycle scripts disabled, run that command manually before continuing. Do not delete/regenerate `bun.lock`, update packages, or use `--production`.
 
-4. Run the build script:
+4. Build Firefox:
 
    ```sh
-   bun run build
+   bun run build:firefox
    ```
 
-   This executes **`scripts/build.ts`**, which performs all compilation and assembly steps:
-
-   - Creates `dist/`.
-   - Compiles `src/background.ts` and `src/content.ts` using `Bun.build` with `target: "browser"` and `format: "iife"`.
-   - Bundles imported source modules and third-party libraries into those two scripts, with no code splitting, source maps, minification, or environment-variable injection.
-   - Copies `extension/manifest.json` to `dist/manifest.json` without modification.
-
-   No additional manual code generation, file copying, editing, or post-processing is required. The complete installable add-on code is exactly these three files:
+   This runs the build script `bun --bun x wxt build -b firefox`. WXT reads `wxt.config.ts`, combines manifest metadata, discovers the two entrypoints, and bundles them through Vite. Production JavaScript is minified; source maps are disabled. The Firefox timeout is compiled as 60 seconds. All technical steps are automated; no manual copying or post-processing is required.
 
    ```text
-   dist/
+   dist/firefox/
    ├── background.js
-   ├── content.js
+   ├── content-scripts/content.js
    └── manifest.json
    ```
 
-5. To create the unsigned distribution archive, run:
+5. Package the extension and reviewer sources:
 
    ```sh
-   bun run package
+   bun run package:firefox
    ```
 
-   This rebuilds the extension using the same script and invokes the locally installed web-ext under Bun. The result is **`artifacts/imageuploader-0.1.0.zip`**, containing the three `dist/` files at the archive root. Firefox is not needed for this step.
+   WXT rebuilds and generates:
 
-### Comparing the rebuilt add-on
+   - `dist/imageuploader-firefox-0.1.0.zip`: unsigned extension.
+   - `dist/imageuploader-0.1.0-sources.zip`: source submission, including the configuration, lockfile, scripts, tests, license, and README.
 
-Compare the **contents** of `dist/background.js`, `dist/content.js`, and `dist/manifest.json` with the corresponding files at the root of the submitted ZIP/XPI. With the same source, Bun version, and frozen lockfile, these are the files to reproduce. ZIP metadata and timestamps may differ, so the whole archive is not expected to have the same checksum. Mozilla signing may also add signature files, which are not generated by this build.
+For Chrome, use `bun run build:chrome` or `bun run package:chrome`. Its output is `dist/chrome/`, the timeout is 25 seconds, and the archive is `dist/imageuploader-chrome-0.1.0.zip`. `bun run build` and `bun run package` process both targets.
 
-### Optional validation and tests
+### Verification
 
-These checks are not required to generate the add-on:
+Compare `manifest.json`, `background.js`, and `content-scripts/content.js` in the selected browser's output directory with the corresponding files in the submitted extension ZIP/XPI. Use the same source, target browser, Bun version, and frozen lockfile. Archive timestamps may differ; compare file contents rather than the whole ZIP checksum. Mozilla-added signature files are not generated by this build.
 
-```sh
-bun test
-bun run typecheck
-bun run lint
-```
+For source submission, use WXT's sources ZIP or include `README.md`, `LICENSE`, `.gitignore`, `package.json`, `bun.lock`, `bunfig.toml`, `tsconfig.json`, `wxt.config.ts`, and complete `extension/`, `src/`, `scripts/`, and `tests/` directories. Do not include `node_modules/`, `.wxt/`, generated builds, or archives. The source ZIP explicitly includes unit tests and `.gitignore` so the documented checks work after extraction as well.
 
-`bun run lint` uses the local web-ext **10.8.0** under Bun. Tests and validation do not perform uploads to Twir.
+### Optional tests
 
-For browser integration tests, install Firefox separately using your distribution's package manager, then run `bun run test:firefox`. The integration tests were verified with **Firefox 158.0**; Firefox **140+** is the extension's minimum desktop runtime version. This optional test suite launches headless Firefox with a temporary test extension. It requires writable access to the existing `/tmp/opencode` directory; if it is absent, create it with `mkdir -p /tmp/opencode`. You can select a different Firefox executable with `FIREFOX_BINARY=/path/to/firefox bun run test:firefox`.
+Run `bun test`, `bun run typecheck`, and `bun run lint`. Archive tests use the locked dev dependency `fflate` **0.8.3** to inspect WXT's ZIPs; it is not bundled into the extension.
 
-### Files required in the source submission
+For real-browser tests, install Firefox **140+** or Chrome/Chromium **148+** separately, then run `bun run test:firefox` or `bun run test:chrome`. Tests were verified with **Firefox 158.0** and **Chromium 154.0.8037.97**. Override the executable with `FIREFOX_BINARY=/path/to/firefox` or `CHROME_BINARY=/path/to/chromium` if needed.
 
-Include this `README.md`, `package.json`, `bun.lock`, `tsconfig.json`, and the complete `src/`, `scripts/`, `extension/`, and `tests/` directories. Do not include `node_modules/`: it is recreated from the lockfile. Generated `dist/` and `artifacts/` directories are not needed in the source archive; submit the packaged extension separately.
+The test runner directly launches an isolated temporary browser profile and installs the WXT-built extension using Firefox RDP or Chrome CDP. It does not use web-ext, access your normal profile, or overwrite the system clipboard. Tests need writable access to `/tmp/opencode`; create it with `mkdir -p /tmp/opencode` if absent. They cover cross-context file reading, production background sender checks, and copy-button states.
 
-## API and limitations
+## API and privacy
 
-- `POST https://twir.app/api/v1/uploader/files`, `multipart/form-data`, field `file`; the link is read from `data.link`. This is the API documented in the uploader's **For developers** section.
-- PNG, JPEG, GIF, WebP, AVIF, and BMP, up to **25 MiB** per file. SVG is not supported.
-- No tokens, authentication, Twir cookies, or account access. Requests use `credentials: "omit"` even if you are signed in to Twir in your browser.
-- Requests run in the extension's background script, not in the Twitch/Kick page context. The timeout is 60 seconds. Anonymous API availability and upload limits are controlled by Twir.
-- Bun handles dependencies, builds, and tests. The extension itself runs in Firefox without a separate local server.
-- Automatic insertion into editors is disabled: the extension only uploads images and displays links for manual copying.
+- Uploads use `POST https://twir.app/api/v1/uploader/files`, `multipart/form-data`, field `file`, and read the result from `data.link`.
+- Supported: PNG, JPEG, GIF, WebP, AVIF, and BMP, up to **25 MiB** per file. SVG is not supported.
+- Requests run in the extension's background context with `credentials: "omit"`, not in the Twitch/Kick page context. No Twir login, tokens, or cookies are used, even if you are signed in elsewhere.
+- The timeout is **60 seconds in Firefox**, **25 seconds in Chrome**. Interrupted uploads report an error without automatic retries. Twir controls API availability and upload limits.
 
-## Privacy
+Pasting an image **immediately uploads it to the third-party service Twir**, where it becomes accessible via a public link. Do not paste confidential images. Closing a notification or undoing chat text does not delete the upload. Retention/deletion policies belong to [Twir](https://twir.app/privacy); anonymous upload management is not implemented.
 
-Pasting an image **immediately uploads it to the third-party service Twir**, where it becomes accessible via a public link. Do not paste confidential images. Closing the notification or undoing chat text does not delete the uploaded file. Retention and deletion policies are determined by [Twir](https://twir.app/privacy); management of anonymous uploads is not implemented in this version.
-
-The extension reads only images from a specific trusted paste event in an editable field. It does not poll the clipboard in the background, read browsing history, or store uploads. Original filenames are replaced with `pasted-image.<format>`; image content and metadata are unchanged. Cookies, page URLs, and chat text are not sent to the API. There is no telemetry. Transmission of pasted images is explicitly declared to Firefox under `personalCommunications`.
-
-## Project structure
-
-- `src/content.ts` — paste interception, uploads, and notifications.
-- `src/editor.ts` — input detection; automatic insertion code is currently unused.
-- `src/background.ts`, `src/upload.ts` — sender validation and anonymous requests.
-- `extension/manifest.json` — permissions and domain restrictions.
-- `scripts/build.ts` — Bun build from TypeScript to browser scripts.
+The extension reads images only from a trusted paste event in an editable field. It does not poll the clipboard, read browsing history, or store uploads. Filenames become `pasted-image.<format>`; image bytes and metadata are unchanged. Cookies, page URLs, and chat text are not sent to the API. There is no telemetry. Transmission of pasted images is declared to Firefox as `personalCommunications`.

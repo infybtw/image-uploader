@@ -7,10 +7,15 @@ export function getPastedImages(data: DataTransfer | null): File[] {
     .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
     .map((item) => item.getAsFile())
     .filter((file): file is File => file !== null);
-  return images.length ? images : Array.from(data.files).filter((file) => file.type.startsWith("image/"));
+  return images.length
+    ? images
+    : Array.from(data.files).filter((file) => file.type.startsWith("image/"));
 }
 
-export async function serializeImage(file: File, Reader: typeof FileReader = FileReader): Promise<ImagePayload> {
+export async function serializeImage(
+  file: File,
+  Reader: typeof FileReader = FileReader,
+): Promise<ImagePayload> {
   validateImage(file.type, file.size);
   const mimeType = file.type;
   // Blob.arrayBuffer() may return a page-realm Promise. Awaiting it from Firefox's
@@ -31,7 +36,8 @@ export async function serializeImage(file: File, Reader: typeof FileReader = Fil
         base64: result.slice(separator + ";base64,".length),
       });
     };
-    reader.onerror = () => reject(reader.error ?? new Error("Firefox could not read the image from the clipboard."));
+    reader.onerror = () =>
+      reject(reader.error ?? new Error("Firefox could not read the image from the clipboard."));
     reader.onabort = () => reject(new Error("Reading the clipboard image was canceled."));
     reader.readAsDataURL(file);
   });

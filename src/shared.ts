@@ -1,4 +1,5 @@
 export const UPLOAD_ENDPOINT = "https://twir.app/api/v1/uploader/files";
+export const SITE_MATCHES = ["https://*.twitch.tv/*", "https://*.kick.com/*"];
 export const MAX_IMAGE_SIZE = 25 * 1024 * 1024;
 export const IMAGE_TYPES = new Map([
   ["image/png", "png"],
@@ -25,8 +26,11 @@ export type UploadReply = { ok: true; url: string } | { ok: false; error: string
 export function isAllowedPage(value: string): boolean {
   try {
     const { protocol, hostname } = new URL(value);
-    return protocol === "https:" && ["twitch.tv", "kick.com"].some(
-      (domain) => hostname === domain || hostname.endsWith(`.${domain}`),
+    return (
+      protocol === "https:" &&
+      ["twitch.tv", "kick.com"].some(
+        (domain) => hostname === domain || hostname.endsWith(`.${domain}`),
+      )
     );
   } catch {
     return false;
@@ -49,7 +53,9 @@ export function errorMessage(error: unknown): string {
     if (error && typeof error === "object") {
       const { name, message } = error as { name?: unknown; message?: unknown };
       if (typeof message === "string" && message.trim()) {
-        return typeof name === "string" && name && name !== "Error" ? `${name}: ${message}` : message;
+        return typeof name === "string" && name && name !== "Error"
+          ? `${name}: ${message}`
+          : message;
       }
       if (typeof name === "string" && name) return name;
       const details = JSON.stringify(error);

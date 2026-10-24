@@ -1,12 +1,31 @@
 import { describe, expect, test } from "bun:test";
 import { runInNewContext } from "node:vm";
-import { IMAGE_TYPES, MAX_IMAGE_SIZE, errorMessage, isAllowedPage, validateImage } from "../src/shared";
+import {
+  IMAGE_TYPES,
+  MAX_IMAGE_SIZE,
+  errorMessage,
+  isAllowedPage,
+  validateImage,
+} from "../src/shared";
 
 describe("site allowlist", () => {
-  for (const url of ["https://twitch.tv/name", "https://www.twitch.tv/popout/name/chat", "https://kick.com/name", "https://www.kick.com/"]) {
+  for (const url of [
+    "https://twitch.tv/name",
+    "https://www.twitch.tv/popout/name/chat",
+    "https://kick.com/name",
+    "https://www.kick.com/",
+  ]) {
     test(`allows ${url}`, () => expect(isAllowedPage(url)).toBe(true));
   }
-  for (const url of ["http://twitch.tv", "https://twitch.tv.evil.com", "https://notkick.com", "https://evil.com/kick.com", "https://twir.app", "file:///twitch.tv", "not a url"]) {
+  for (const url of [
+    "http://twitch.tv",
+    "https://twitch.tv.evil.com",
+    "https://notkick.com",
+    "https://evil.com/kick.com",
+    "https://twir.app",
+    "file:///twitch.tv",
+    "not a url",
+  ]) {
     test(`rejects ${url}`, () => expect(isAllowedPage(url)).toBe(false));
   }
 });
@@ -14,13 +33,23 @@ describe("site allowlist", () => {
 describe("error descriptions", () => {
   test("preserves standard errors and their type", () => {
     expect(errorMessage(new Error("Upload failed"))).toBe("Upload failed");
-    expect(errorMessage(new TypeError("file.arrayBuffer is not a function"))).toBe("TypeError: file.arrayBuffer is not a function");
-    expect(errorMessage(new DOMException("Operation failed", "NotAllowedError"))).toBe("NotAllowedError: Operation failed");
+    expect(errorMessage(new TypeError("file.arrayBuffer is not a function"))).toBe(
+      "TypeError: file.arrayBuffer is not a function",
+    );
+    expect(errorMessage(new DOMException("Operation failed", "NotAllowedError"))).toBe(
+      "NotAllowedError: Operation failed",
+    );
   });
   test("preserves Firefox rejection strings and plain objects", () => {
-    expect(errorMessage("Could not establish connection. Receiving end does not exist.")).toBe("Could not establish connection. Receiving end does not exist.");
-    expect(errorMessage({ message: "Extension context invalidated." })).toBe("Extension context invalidated.");
-    expect(errorMessage({ name: "NetworkError", message: "Failed to fetch" })).toBe("NetworkError: Failed to fetch");
+    expect(errorMessage("Could not establish connection. Receiving end does not exist.")).toBe(
+      "Could not establish connection. Receiving end does not exist.",
+    );
+    expect(errorMessage({ message: "Extension context invalidated." })).toBe(
+      "Extension context invalidated.",
+    );
+    expect(errorMessage({ name: "NetworkError", message: "Failed to fetch" })).toBe(
+      "NetworkError: Failed to fetch",
+    );
   });
   test("preserves errors from a different realm", () => {
     const error = runInNewContext('new TypeError("Cross-realm failure")');
@@ -28,23 +57,32 @@ describe("error descriptions", () => {
     expect(errorMessage(error)).toBe("TypeError: Cross-realm failure");
   });
   test("shows structured errors and reports empty rejection values", () => {
-    expect(errorMessage({ reason: "Upload rejected", code: 403 })).toBe('{"reason":"Upload rejected","code":403}');
+    expect(errorMessage({ reason: "Upload rejected", code: 403 })).toBe(
+      '{"reason":"Upload rejected","code":403}',
+    );
     expect(errorMessage(null)).toContain("null");
     expect(errorMessage(undefined)).toContain("undefined");
     expect(errorMessage(403)).toContain("403");
   });
   test("doesn't throw when an error cannot be inspected", () => {
-    const error = Object.defineProperty({}, "message", { get() { throw new Error("Blocked"); } });
+    const error = Object.defineProperty({}, "message", {
+      get() {
+        throw new Error("Blocked");
+      },
+    });
     expect(errorMessage(error)).toBe("Could not read the error details.");
   });
 });
 
 describe("image validation", () => {
   test("accepts every documented format and the size boundary", () => {
-    for (const type of IMAGE_TYPES.keys()) expect(() => validateImage(type, MAX_IMAGE_SIZE)).not.toThrow();
+    for (const type of IMAGE_TYPES.keys())
+      expect(() => validateImage(type, MAX_IMAGE_SIZE)).not.toThrow();
   });
   test("rejects SVG, non-images, empty files and oversized files", () => {
-    for (const type of ["image/svg+xml", "text/plain", ""]) expect(() => validateImage(type, 10)).toThrow();
-    for (const size of [0, -1, NaN, Infinity, 1.5, MAX_IMAGE_SIZE + 1]) expect(() => validateImage("image/png", size)).toThrow();
+    for (const type of ["image/svg+xml", "text/plain", ""])
+      expect(() => validateImage(type, 10)).toThrow();
+    for (const size of [0, -1, NaN, Infinity, 1.5, MAX_IMAGE_SIZE + 1])
+      expect(() => validateImage("image/png", size)).toThrow();
   });
 });

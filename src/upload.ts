@@ -1,12 +1,19 @@
 import { MAX_IMAGE_SIZE, UPLOAD_ENDPOINT, errorMessage, validateImage } from "./shared";
+import { UPLOAD_TIMEOUT_MS } from "./config";
 
 export function decodeImage(payload: unknown): File {
   if (!payload || typeof payload !== "object") throw new Error("Invalid image data.");
   const { name, mimeType, base64 } = payload as Record<string, unknown>;
-  if (typeof name !== "string" || name.length > 255 || typeof mimeType !== "string" || typeof base64 !== "string") {
+  if (
+    typeof name !== "string" ||
+    name.length > 255 ||
+    typeof mimeType !== "string" ||
+    typeof base64 !== "string"
+  ) {
     throw new Error("Invalid image data.");
   }
-  if (base64.length > 4 * Math.ceil(MAX_IMAGE_SIZE / 3)) throw new Error("The image exceeds the 25 MiB size limit.");
+  if (base64.length > 4 * Math.ceil(MAX_IMAGE_SIZE / 3))
+    throw new Error("The image exceeds the 25 MiB size limit.");
   if (base64.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(base64)) {
     throw new Error("The image is corrupted.");
   }
@@ -30,7 +37,14 @@ export function parseUploadUrl(body: unknown): string {
   } catch {
     throw new Error("Twir returned an invalid link.");
   }
-  if (!["https:", "http:"].includes(url.protocol) || url.hostname !== "twir.app" || url.port || url.username || url.password || !/^\/u\/[A-Za-z0-9_-]+$/.test(url.pathname)) {
+  if (
+    !["https:", "http:"].includes(url.protocol) ||
+    url.hostname !== "twir.app" ||
+    url.port ||
+    url.username ||
+    url.password ||
+    !/^\/u\/[A-Za-z0-9_-]+$/.test(url.pathname)
+  ) {
     throw new Error("Twir returned an unexpected link.");
   }
   // The public API examples currently use http; never insert an insecure URL.
@@ -42,7 +56,11 @@ export function parseUploadUrl(body: unknown): string {
 
 type Fetch = (url: string, init: RequestInit) => Promise<Response>;
 
-export async function uploadImage(payload: unknown, fetcher: Fetch = fetch): Promise<string> {
+export async function uploadImage(
+  payload: unknown,
+  fetcher: Fetch = fetch,
+  timeoutMs = UPLOAD_TIMEOUT_MS,
+): Promise<string> {
   const file = decodeImage(payload);
   const form = new FormData();
   form.append("file", file);
@@ -54,13 +72,17 @@ export async function uploadImage(payload: unknown, fetcher: Fetch = fetch): Pro
       credentials: "omit",
       referrerPolicy: "no-referrer",
       redirect: "error",
-      signal: AbortSignal.timeout(60_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {
     if (error instanceof Error && ["TimeoutError", "AbortError"].includes(error.name)) {
-      throw new Error("Twir did not respond within 60 seconds. Please try again.");
+      throw new Error(
+        `Twir did not respond within ${timeoutMs / 1_000} seconds. Please try again.`,
+      );
     }
-    throw new Error(`Could not connect to Twir. Check your network connection and permission to access twir.app.\n${errorMessage(error)}`);
+    throw new Error(
+      `Could not connect to Twir. Check your network connection and permission to access twir.app.\n${errorMessage(error)}`,
+    );
   }
   if (!response.ok) {
     const messages: Record<number, string> = {

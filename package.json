@@ -5,19 +5,25 @@
   "type": "module",
   "packageManager": "bun@1.4.4",
   "scripts": {
-    "build": "bun scripts/build.ts",
-    "dev": "bun run build && bun --bun x web-ext run --source-dir dist --start-url https://www.twitch.tv --start-url https://kick.com",
+    "build": "bun run build:firefox && bun run build:chrome",
+    "build:firefox": "bun --bun x wxt build -b firefox",
+    "build:chrome": "bun --bun x wxt build -b chrome",
+    "postinstall": "bun --bun x wxt prepare",
     "test": "bun test",
-    "test:firefox": "bun scripts/test-firefox.ts",
-    "typecheck": "tsc --noEmit",
-    "lint": "bun run build && bun --bun x web-ext lint --source-dir dist --warnings-as-errors",
-    "package": "bun run build && bun --bun x web-ext build --source-dir dist --artifacts-dir artifacts --overwrite-dest"
+    "test:firefox": "bun scripts/test-browser.ts firefox",
+    "test:chrome": "bun scripts/test-browser.ts chrome",
+    "typecheck": "bun --bun x wxt prepare && bun check",
+    "lint": "bun fmt --check",
+    "format": "bun fmt",
+    "format:check": "bun fmt --check",
+    "package": "bun run package:firefox && bun run package:chrome",
+    "package:firefox": "bun --bun x wxt zip -b firefox",
+    "package:chrome": "bun --bun x wxt zip -b chrome"
   },
   "devDependencies": {
     "@types/bun": "1.4.4",
-    "@types/firefox-webext-browser": "143.0.1",
-    "typescript": "7.0.2",
-    "web-ext": "10.8.0"
+    "fflate": "0.8.3",
+    "wxt": "0.21.4"
   },
   "dependencies": {
     "lucide": "1.61.0",

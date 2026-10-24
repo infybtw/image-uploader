@@ -3,28 +3,5 @@
   "name": "ImageUploader",
   "version": "0.1.0",
   "description": "Upload clipboard images to Twir on Twitch and Kick. Copy the link from a notification. No sign-in required.",
-  "browser_specific_settings": {
-    "gecko": {
-      "id": "twir-paste@imageuploader.local",
-      "strict_min_version": "140.0",
-      "data_collection_permissions": {
-        "required": ["personalCommunications"]
-      }
-    },
-    "gecko_android": {
-      "strict_min_version": "142.0"
-    }
-  },
-  "host_permissions": ["https://twir.app/*"],
-  "background": {
-    "scripts": ["background.js"]
-  },
-  "content_scripts": [
-    {
-      "matches": ["https://*.twitch.tv/*", "https://*.kick.com/*"],
-      "js": ["content.js"],
-      "run_at": "document_start",
-      "all_frames": true
-    }
-  ]
+  "host_permissions": ["https://twir.app/*"]
 }

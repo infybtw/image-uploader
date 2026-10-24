@@ -1,22 +1,9 @@
-import { mkdir, copyFile } from "node:fs/promises";
+import { join } from "node:path";
+import { build } from "wxt";
+import type { BrowserTarget } from "./manifest";
 
-const root = new URL("../", import.meta.url);
-const outdir = new URL("dist/", root).pathname;
-await mkdir(outdir, { recursive: true });
-
-const result = await Bun.build({
-  entrypoints: ["src/background.ts", "src/content.ts"].map(
-    (path) => new URL(path, root).pathname,
-  ),
-  outdir,
-  target: "browser",
-  format: "iife",
-  splitting: false,
-  sourcemap: "none",
-  minify: false,
-  env: "disable",
-});
-
-if (!result.success) throw new AggregateError(result.logs, "Build failed");
-await copyFile(new URL("extension/manifest.json", root), new URL("dist/manifest.json", root));
-console.log("Extension built in dist/");
+// Integration tests use the same WXT pipeline, with isolated output directories.
+export async function buildExtension(target: BrowserTarget, dist: string) {
+  await build({ root: new URL("../", import.meta.url).pathname, browser: target, outDir: dist });
+  return join(dist, target);
+}
