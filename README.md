@@ -1,8 +1,8 @@
 # ImageUploader
 
-Upload clipboard images on **twitch.tv** and **kick.com**, including subdomains. Images are uploaded anonymously to [Twir Uploader](https://twir.app/uploader), and their links appear in a notification with a copy button. The extension **does not insert links into chat or send messages**.
+Upload clipboard images on **twitch.tv** and **kick.com**, including subdomains. Available as a Firefox/Chrome extension or a **Tampermonkey userscript**. Images are uploaded anonymously to [Twir Uploader](https://twir.app/uploader), and their links appear in a notification with a copy button. Neither version **inserts links into chat or sends messages**.
 
-The project uses **WXT** to generate browser manifests, build entrypoints, and package extensions. **Bun 1.4.4** runs the tooling, tests, native type checker, and formatter. There are no `dev:*` commands or direct `web-ext` dependency; load the built extension manually.
+The project uses **WXT** to generate browser manifests, build entrypoints, and package extensions. **Bun 1.4.4** runs the tooling, tests, native type checker, and formatter, and bundles the standalone userscript. There are no `dev:*` commands or direct `web-ext` dependency; load the built extension or userscript manually.
 
 ## Getting started
 
@@ -13,7 +13,7 @@ bun install --frozen-lockfile
 bun run build
 ```
 
-The installation runs `wxt prepare` to generate `.wxt/` types and configuration. The build creates `dist/firefox/` and `dist/chrome/`.
+The installation runs `wxt prepare` to generate `.wxt/` types and configuration. The build creates `dist/firefox/`, `dist/chrome/`, and `dist/imageuploader.user.js`.
 
 `bunfig.toml` enables `[install] exact = true`, so newly added packages are saved with exact versions rather than `^` or `~` ranges. Keep `bun.lock` committed and use `--frozen-lockfile` for reproducible installs.
 
@@ -33,6 +33,17 @@ A temporary add-on is removed when Firefox restarts. Permanent installation in s
 
 Both targets use Manifest V3. WXT generates a background script for Firefox and a service worker for Chrome. Chrome's minimum version remains **148**.
 
+### Tampermonkey
+
+1. Install a current version of [Tampermonkey](https://www.tampermonkey.net/) in your browser and enable userscript execution if prompted.
+2. Build the script with `bun run build:userscript` (also included in `bun run build`).
+3. Open the Tampermonkey dashboard, create a new script, replace the template with the **entire contents** of `dist/imageuploader.user.js`, and save it with **Ctrl+S**.
+4. Allow access to `twir.app` if prompted, then reload Twitch/Kick tabs.
+
+Use either the extension or the userscript on a site, not both at once. The userscript has the same paste handling, image limits, notifications, and animated copy button. It uses Tampermonkey's anonymous background request API for uploads and `GM.setClipboard` only when you click copy. Its upload timeout is **60 seconds** in both browsers. All dependencies are bundled; no external `@require` scripts are loaded.
+
+To update a manually installed script, rebuild and replace its contents in Tampermonkey again. No automatic update URL is configured.
+
 ### Usage
 
 1. Copy an image, focus a chat input, and press **Ctrl+V** (**Cmd+V** on macOS).
@@ -48,13 +59,14 @@ Multiple images upload sequentially. Failed uploads are not retried automaticall
 ## Commands
 
 ```sh
-bun run build          # WXT production builds for both browsers
+bun run build          # Both browser extensions and the Tampermonkey userscript
 bun run build:firefox   # WXT Firefox build in dist/firefox/
 bun run build:chrome    # WXT Chrome build in dist/chrome/
+bun run build:userscript # Standalone dist/imageuploader.user.js for Tampermonkey
 bun run package        # WXT ZIPs for both browsers and a Firefox sources ZIP
 bun run package:firefox # Firefox extension ZIP and sources ZIP
 bun run package:chrome  # Chrome extension ZIP
-bun test               # Unit, WXT build, and archive tests; no uploads
+bun test               # Unit, extension/userscript build, and archive tests; no uploads
 bun run test:firefox    # Integration checks in real headless Firefox
 bun run test:chrome     # Integration checks in real headless Chrome/Chromium
 bun run typecheck      # wxt prepare, then native bun check
@@ -151,7 +163,7 @@ An internet connection is required to install Bun and locked packages. Building 
    - `dist/imageuploader-firefox-0.1.0.zip`: unsigned extension.
    - `dist/imageuploader-0.1.0-sources.zip`: source submission, including the configuration, lockfile, scripts, tests, license, and README.
 
-For Chrome, use `bun run build:chrome` or `bun run package:chrome`. Its output is `dist/chrome/`, the timeout is 25 seconds, and the archive is `dist/imageuploader-chrome-0.1.0.zip`. `bun run build` and `bun run package` process both targets.
+For Chrome, use `bun run build:chrome` or `bun run package:chrome`. Its output is `dist/chrome/`, the timeout is 25 seconds, and the archive is `dist/imageuploader-chrome-0.1.0.zip`. `bun run build` processes both browser targets and the userscript; `bun run package` packages only the browser extensions.
 
 ### Verification
 
@@ -171,9 +183,9 @@ The test runner directly launches an isolated temporary browser profile and inst
 
 - Uploads use `POST https://twir.app/api/v1/uploader/files`, `multipart/form-data`, field `file`, and read the result from `data.link`.
 - Supported: PNG, JPEG, GIF, WebP, AVIF, and BMP, up to **25 MiB** per file. SVG is not supported.
-- Requests run in the extension's background context with `credentials: "omit"`, not in the Twitch/Kick page context. No Twir login, tokens, or cookies are used, even if you are signed in elsewhere.
-- The timeout is **60 seconds in Firefox**, **25 seconds in Chrome**. Interrupted uploads report an error without automatic retries. Twir controls API availability and upload limits.
+- Extension requests run in its background context with `credentials: "omit"`; userscript requests run through Tampermonkey with `anonymous: true`. Neither uploads from the Twitch/Kick page context. No Twir login, tokens, or cookies are used, even if you are signed in elsewhere.
+- The extension timeout is **60 seconds in Firefox**, **25 seconds in Chrome**; the userscript timeout is **60 seconds**. Interrupted uploads report an error without automatic retries. Twir controls API availability and upload limits.
 
 Pasting an image **immediately uploads it to the third-party service Twir**, where it becomes accessible via a public link. Do not paste confidential images. Closing a notification or undoing chat text does not delete the upload. Retention/deletion policies belong to [Twir](https://twir.app/privacy); anonymous upload management is not implemented.
 
-The extension reads images only from a trusted paste event in an editable field. It does not poll the clipboard, read browsing history, or store uploads. Filenames become `pasted-image.<format>`; image bytes and metadata are unchanged. Cookies, page URLs, and chat text are not sent to the API. There is no telemetry. Transmission of pasted images is declared to Firefox as `personalCommunications`.
+Both versions read images only from a trusted paste event in an editable field. They do not poll the clipboard, read browsing history, or store uploads. Filenames become `pasted-image.<format>`; image bytes and metadata are unchanged. Cookies, page URLs, and chat text are not sent to the API. There is no telemetry. Transmission of pasted images is declared by the Firefox extension as `personalCommunications`.

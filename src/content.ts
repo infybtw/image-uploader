@@ -1,16 +1,13 @@
 import { getPastedImages, serializeImage } from "./clipboard";
-import { browser } from "wxt/browser";
 import { findEditor } from "./editor";
 import { createNotice } from "./notice";
-import {
-  errorMessage,
-  isAllowedPage,
-  validateImage,
-  type UploadMessage,
-  type UploadReply,
-} from "./shared";
+import { errorMessage, isAllowedPage, validateImage, type ImagePayload } from "./shared";
+import type { WriteText } from "./copy-button";
 
-export function registerPasteHandler() {
+export function registerPasteHandler(
+  upload: (image: ImagePayload) => Promise<string>,
+  writeText?: WriteText,
+) {
   let busy = false;
 
   if (isAllowedPage(location.href)) {
@@ -26,7 +23,7 @@ export function registerPasteHandler() {
         event.stopImmediatePropagation();
         // Keep this synchronous: the browser's normal paste must already be cancelled.
         if (busy) return;
-        const notify = createNotice();
+        const notify = createNotice(writeText);
         busy = true;
         void (async () => {
           const urls: string[] = [];
@@ -40,18 +37,9 @@ export function registerPasteHandler() {
                 true,
               );
               stage = `Reading image ${index + 1}/${files.length}`;
-              const message: UploadMessage = {
-                type: "upload-image",
-                image: await serializeImage(file),
-              };
+              const image = await serializeImage(file);
               stage = `Uploading image ${index + 1}/${files.length}`;
-              const reply: UploadReply | undefined = await browser.runtime.sendMessage(message);
-              if (!reply)
-                throw new Error(
-                  "The extension's background process is unavailable. Reload the page.",
-                );
-              if (!reply.ok) throw new Error(reply.error);
-              urls.push(reply.url);
+              urls.push(await upload(image));
             }
             notify("Uploaded. Click the button on the right to copy the link:", urls, true);
           } catch (error) {

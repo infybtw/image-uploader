@@ -5,9 +5,10 @@
   "type": "module",
   "packageManager": "bun@1.4.4",
   "scripts": {
-    "build": "bun run build:firefox && bun run build:chrome",
+    "build": "bun run build:firefox && bun run build:chrome && bun run build:userscript",
     "build:firefox": "bun --bun x wxt build -b firefox",
     "build:chrome": "bun --bun x wxt build -b chrome",
+    "build:userscript": "bun scripts/build-userscript.ts",
     "postinstall": "bun --bun x wxt prepare",
     "test": "bun test",
     "test:firefox": "bun scripts/test-browser.ts firefox",

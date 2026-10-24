@@ -1,6 +1,6 @@
-import { createCopyButton } from "./copy-button";
+import { createCopyButton, type WriteText } from "./copy-button";
 
-export function createNotice() {
+export function createNotice(writeText?: WriteText) {
   const host = document.createElement("div");
   host.style.cssText =
     "all:initial;position:fixed;top:20px;right:20px;z-index:2147483647;max-width:calc(100vw - 40px)";
@@ -69,10 +69,14 @@ export function createNotice() {
       input.readOnly = true;
       input.setAttribute("aria-label", "Image link — click to select and copy");
       input.addEventListener("click", () => input.select());
-      const copy = createCopyButton(url, (error) => {
-        status.textContent = error;
-        window.clearTimeout(dismissTimer);
-      });
+      const copy = createCopyButton(
+        url,
+        (error) => {
+          status.textContent = error;
+          window.clearTimeout(dismissTimer);
+        },
+        writeText,
+      );
       copy.element.addEventListener("click", () => {
         // Keep the success check visible even when copying just before auto-dismiss.
         window.clearTimeout(dismissTimer);

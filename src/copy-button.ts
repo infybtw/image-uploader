@@ -2,7 +2,7 @@ import { Copy, Check } from "lucide";
 import { createMorph } from "morphicons/dom";
 import { errorMessage } from "./shared";
 
-type WriteText = (text: string) => Promise<void>;
+export type WriteText = (text: string) => Promise<void>;
 
 export function createCopyButton(
   url: string,

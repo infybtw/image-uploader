@@ -1,10 +1,21 @@
 import { defineContentScript } from "wxt/utils/define-content-script";
 import { registerPasteHandler } from "../content";
 import { SITE_MATCHES } from "../shared";
+import { browser } from "wxt/browser";
+import type { UploadMessage, UploadReply } from "../shared";
 
 export default defineContentScript({
   matches: SITE_MATCHES,
   runAt: "document_start",
   allFrames: true,
-  main: registerPasteHandler,
+  main() {
+    registerPasteHandler(async (image) => {
+      const message: UploadMessage = { type: "upload-image", image };
+      const reply: UploadReply | undefined = await browser.runtime.sendMessage(message);
+      if (!reply)
+        throw new Error("The extension's background process is unavailable. Reload the page.");
+      if (!reply.ok) throw new Error(reply.error);
+      return reply.url;
+    });
+  },
 });
