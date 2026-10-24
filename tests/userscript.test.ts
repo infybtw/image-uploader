@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { runInNewContext } from "node:vm";
 import { buildUserscript } from "../scripts/build-userscript";
+import manifest from "../extension/manifest.json";
 import { uploadImage } from "../src/upload";
 import { UPLOAD_ENDPOINT } from "../src/shared";
 import {
@@ -129,7 +130,9 @@ test("userscript is a self-contained installable bundle without extension runtim
     const script = await Bun.file(output).text();
     expect(script.startsWith("// ==UserScript==\n")).toBe(true);
     for (const line of [
-      "// @version      0.1.0",
+      `// @version      ${manifest.version}`,
+      "// @updateURL    https://github.com/infybtw/ImageUploader/releases/latest/download/imageuploader.meta.js",
+      "// @downloadURL  https://github.com/infybtw/ImageUploader/releases/latest/download/imageuploader.user.js",
       "// @match        https://*.twitch.tv/*",
       "// @match        https://*.kick.com/*",
       "// @connect      twir.app",
@@ -141,6 +144,8 @@ test("userscript is a self-contained installable bundle without extension runtim
     ]) {
       expect(script).toContain(line);
     }
+    const metadata = await Bun.file(join(directory, "imageuploader.meta.js")).text();
+    expect(metadata).toBe(`${script.split("// ==/UserScript==")[0]}// ==/UserScript==\n`);
     expect(script).not.toMatch(/chrome\.runtime|browser\.runtime|__UPLOAD_TIMEOUT_MS__/);
     expect(script).not.toContain("execCommand");
     expect(script).not.toContain("captureInsertionPoint");

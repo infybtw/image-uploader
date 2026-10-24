@@ -2,6 +2,8 @@ import { join } from "node:path";
 import manifest from "../extension/manifest.json";
 import { SITE_MATCHES } from "../src/shared";
 
+const releaseUrl = "https://github.com/infybtw/ImageUploader/releases/latest/download";
+
 export async function buildUserscript(outdir = "dist") {
   const metadata = [
     "// ==UserScript==",
@@ -9,6 +11,8 @@ export async function buildUserscript(outdir = "dist") {
     "// @namespace    ImageUploader",
     `// @version      ${manifest.version}`,
     `// @description  ${manifest.description}`,
+    `// @updateURL    ${releaseUrl}/imageuploader.meta.js`,
+    `// @downloadURL  ${releaseUrl}/imageuploader.user.js`,
     "// @license      MIT",
     ...SITE_MATCHES.map((match) => `// @match        ${match}`),
     "// @connect      twir.app",
@@ -29,6 +33,7 @@ export async function buildUserscript(outdir = "dist") {
   if (!result.success) throw new AggregateError(result.logs, "Userscript build failed.");
   const output = join(outdir, "imageuploader.user.js");
   await Bun.write(output, result.outputs[0]!);
+  await Bun.write(join(outdir, "imageuploader.meta.js"), `${metadata}\n`);
   return output;
 }
 

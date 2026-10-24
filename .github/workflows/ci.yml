@@ -1,0 +1,89 @@
+name: CI / Release
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  build:
+    name: Check and package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+      - name: Check versions
+        run: bun run release:check
+      - name: Validate release tag
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: bun run release:check "$RELEASE_TAG"
+      - name: Check formatting
+        run: bun run lint
+      - name: Check types
+        run: bun run typecheck
+      - name: Prepare test directories
+        run: mkdir -p /tmp/opencode
+      - name: Run tests
+        run: bun test
+      - name: Package browser extensions
+        run: bun run package
+      - name: Build Tampermonkey script and update metadata
+        run: bun run build:userscript
+      - name: Save installable artifacts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: imageuploader
+          path: |
+            dist/*.zip
+            dist/imageuploader.user.js
+            dist/imageuploader.meta.js
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish GitHub Release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Download checked artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: imageuploader
+          path: release
+      - name: Generate checksums
+        working-directory: release
+        run: sha256sum ./*.zip ./*.js > SHA256SUMS
+      - name: Create release with all assets
+        working-directory: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" \
+            --verify-tag \
+            --title "$RELEASE_TAG" \
+            --generate-notes \
+            ./*.zip ./imageuploader.user.js ./imageuploader.meta.js ./SHA256SUMS

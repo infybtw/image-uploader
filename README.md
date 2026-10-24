@@ -13,7 +13,7 @@ bun install --frozen-lockfile
 bun run build
 ```
 
-The installation runs `wxt prepare` to generate `.wxt/` types and configuration. The build creates `dist/firefox/`, `dist/chrome/`, and `dist/imageuploader.user.js`.
+The installation runs `wxt prepare` to generate `.wxt/` types and configuration. The build creates `dist/firefox/`, `dist/chrome/`, `dist/imageuploader.user.js`, and update metadata in `dist/imageuploader.meta.js`.
 
 `bunfig.toml` enables `[install] exact = true`, so newly added packages are saved with exact versions rather than `^` or `~` ranges. Keep `bun.lock` committed and use `--frozen-lockfile` for reproducible installs.
 
@@ -36,13 +36,13 @@ Both targets use Manifest V3. WXT generates a background script for Firefox and 
 ### Tampermonkey
 
 1. Install a current version of [Tampermonkey](https://www.tampermonkey.net/) in your browser and enable userscript execution if prompted.
-2. Build the script with `bun run build:userscript` (also included in `bun run build`).
-3. Open the Tampermonkey dashboard, create a new script, replace the template with the **entire contents** of `dist/imageuploader.user.js`, and save it with **Ctrl+S**.
+2. Open [the latest userscript](https://github.com/infybtw/ImageUploader/releases/latest/download/imageuploader.user.js) and confirm installation in Tampermonkey. This link becomes available after the first release.
+3. Alternatively, build with `bun run build:userscript` (also included in `bun run build`), create a new script in the Tampermonkey dashboard, replace the template with the **entire contents** of `dist/imageuploader.user.js`, and save it with **Ctrl+S**.
 4. Allow access to `twir.app` if prompted, then reload Twitch/Kick tabs.
 
 Use either the extension or the userscript on a site, not both at once. The userscript has the same paste handling, image limits, notifications, and animated copy button. It uses Tampermonkey's anonymous background request API for uploads and `GM.setClipboard` only when you click copy. Its upload timeout is **60 seconds** in both browsers. All dependencies are bundled; no external `@require` scripts are loaded.
 
-To update a manually installed script, rebuild and replace its contents in Tampermonkey again. No automatic update URL is configured.
+The script includes `@updateURL` and `@downloadURL` pointing to the latest GitHub Release. With update checks enabled in Tampermonkey, it checks the small `imageuploader.meta.js` file and downloads `imageuploader.user.js` when `@version` increases. Previously installed scripts without these URLs need to be reinstalled or replaced once. Updates follow published stable releases, not branch builds; no update is available before the first release. Forks should change the repository URL in `scripts/build-userscript.ts` before distribution.
 
 ### Usage
 
@@ -63,6 +63,7 @@ bun run build          # Both browser extensions and the Tampermonkey userscript
 bun run build:firefox   # WXT Firefox build in dist/firefox/
 bun run build:chrome    # WXT Chrome build in dist/chrome/
 bun run build:userscript # Standalone dist/imageuploader.user.js for Tampermonkey
+bun run release:check   # Check package/extension versions; optionally pass vX.Y.Z
 bun run package        # WXT ZIPs for both browsers and a Firefox sources ZIP
 bun run package:firefox # Firefox extension ZIP and sources ZIP
 bun run package:chrome  # Chrome extension ZIP
@@ -76,6 +77,31 @@ bun run format:check   # Alias for bun fmt --check
 ```
 
 After changing source, rebuild, reload the extension in the browser's extension management page, and reload the website. Formatting settings live in `bunfig.toml`. `bun fmt` checks formatting, not semantic lint rules. Mozilla-specific add-on validation is not included in these commands.
+
+## CI and GitHub Releases
+
+`.github/workflows/ci.yml` runs on branch pushes, pull requests, and manual dispatches. It installs the Bun version from `package.json` with the frozen lockfile, checks versions, formatting and types, runs `bun test`, packages both extensions, and builds the userscript. Real-browser integration tests are not part of CI. Successful runs keep downloadable build artifacts for 14 days in the Actions tab.
+
+Pushing a tag `vX.Y.Z` runs the same checks and publishes a GitHub Release with generated release notes and these assets:
+
+- `imageuploader-firefox-X.Y.Z.zip` — unsigned Firefox extension.
+- `imageuploader-chrome-X.Y.Z.zip` — Chrome/Chromium extension.
+- `imageuploader-X.Y.Z-sources.zip` — rebuildable Firefox reviewer sources.
+- `imageuploader.user.js` — installable Tampermonkey script; its filename stays stable for updates.
+- `imageuploader.meta.js` — userscript update metadata.
+- `SHA256SUMS` — SHA-256 checksums of the ZIP and JavaScript assets.
+
+To publish, set the same new, increasing **stable `X.Y.Z` version** in `package.json` and `extension/manifest.json`, commit and push the changes, then push the matching tag. For the initial version:
+
+```sh
+bun run release:check v0.1.0
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Tag/version mismatches and prerelease tags fail before publishing. Published releases are not overwritten; use a new version and tag for changes. The workflow uses the built-in `GITHUB_TOKEN` with `contents: write` only in the release job; no personal token or extra secrets are required. GitHub Actions must be enabled and repository/organization policy must allow release creation. The repository must be public for anonymous downloads and Tampermonkey updates.
+
+**Extension ZIPs are for manual installation/distribution, not browser auto-updates.** Firefox requires a signed XPI via Mozilla Add-ons for permanent installation (listed or unlisted); Chrome normally needs Chrome Web Store distribution. Store publishing/signing and self-hosted extension update manifests are not configured by this workflow. Only the Tampermonkey version is wired for automatic updates through GitHub Releases.
 
 ## Manifest configuration
 

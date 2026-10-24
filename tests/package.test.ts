@@ -3,13 +3,14 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { unzipSync } from "fflate";
 import { packageExtension } from "../scripts/package";
+import manifest from "../extension/manifest.json";
 
 test("WXT packages each browser and includes rebuildable Firefox sources", async () => {
   const directory = await mkdtemp("/tmp/opencode/imageuploader-package-");
   try {
     for (const target of ["firefox", "chrome"] as const) {
       const paths = await packageExtension(target, directory);
-      const zip = join(directory, `imageuploader-${target}-0.1.0.zip`);
+      const zip = join(directory, `imageuploader-${target}-${manifest.version}.zip`);
       expect(paths).toContain(zip);
       const entries = unzipSync(await Bun.file(zip).bytes());
       expect(Object.keys(entries).sort()).toEqual([
@@ -21,7 +22,7 @@ test("WXT packages each browser and includes rebuildable Firefox sources", async
         expect(content).toEqual(await Bun.file(join(directory, target, name)).bytes());
       }
       if (target === "firefox") {
-        const sourceZip = join(directory, "imageuploader-0.1.0-sources.zip");
+        const sourceZip = join(directory, `imageuploader-${manifest.version}-sources.zip`);
         expect(paths).toContain(sourceZip);
         const sources = unzipSync(await Bun.file(sourceZip).bytes());
         for (const name of [
