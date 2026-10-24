@@ -94,9 +94,9 @@ Pushing a tag `vX.Y.Z` runs the same checks and publishes a GitHub Release with 
 To publish, set the same new, increasing **stable `X.Y.Z` version** in `package.json` and `extension/manifest.json`, commit and push the changes, then push the matching tag. For the initial version:
 
 ```sh
-bun run release:check v0.1.0
-git tag v0.1.0
-git push origin v0.1.0
+bun run release:check v0.1.1
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
 Tag/version mismatches and prerelease tags fail before publishing. Published releases are not overwritten; use a new version and tag for changes. The workflow uses the built-in `GITHUB_TOKEN` with `contents: write` only in the release job; no personal token or extra secrets are required. GitHub Actions must be enabled and repository/organization policy must allow release creation. The repository must be public for anonymous downloads and Tampermonkey updates.
@@ -186,10 +186,10 @@ An internet connection is required to install Bun and locked packages. Building 
 
    WXT rebuilds and generates:
 
-   - `dist/imageuploader-firefox-0.1.0.zip`: unsigned extension.
-   - `dist/imageuploader-0.1.0-sources.zip`: source submission, including the configuration, lockfile, scripts, tests, license, and README.
+   - `dist/imageuploader-firefox-0.1.1.zip`: unsigned extension.
+   - `dist/imageuploader-0.1.1-sources.zip`: source submission, including the configuration, lockfile, scripts, tests, license, and README.
 
-For Chrome, use `bun run build:chrome` or `bun run package:chrome`. Its output is `dist/chrome/`, the timeout is 25 seconds, and the archive is `dist/imageuploader-chrome-0.1.0.zip`. `bun run build` processes both browser targets and the userscript; `bun run package` packages only the browser extensions.
+For Chrome, use `bun run build:chrome` or `bun run package:chrome`. Its output is `dist/chrome/`, the timeout is 25 seconds, and the archive is `dist/imageuploader-chrome-0.1.1.zip`. `bun run build` processes both browser targets and the userscript; `bun run package` packages only the browser extensions.
 
 ### Verification
 
