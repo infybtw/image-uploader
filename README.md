@@ -1,6 +1,6 @@
 # ImageUploader
 
-Upload clipboard images on **twitch.tv** and **kick.com**, including subdomains. Available as a Firefox/Chrome extension or a **Tampermonkey userscript**. Images are uploaded anonymously to [Twir Uploader](https://twir.app/uploader), and their links appear in a panel with a copy button above the Twitch chat input. Kick and unrecognized chat layouts use a floating notification. Neither version **inserts links into chat or sends messages**.
+Upload clipboard images on **twitch.tv** and **kick.com**, including subdomains. Available as a Firefox/Chrome extension or a **Tampermonkey userscript**. Images are uploaded anonymously to [Twir Uploader](https://twir.app/uploader), and their links appear in a panel with a copy button above the Twitch or Kick chat input. Unrecognized chat layouts use a floating notification. Neither version **inserts links into chat or sends messages**.
 
 The project uses **WXT** to generate browser manifests, build entrypoints, and package extensions. **Bun 1.4.4** runs the tooling, tests, native type checker, and formatter, and bundles the standalone userscript. There are no `dev:*` commands or direct `web-ext` dependency; load the built extension or userscript manually.
 
@@ -47,12 +47,12 @@ The script includes `@updateURL` and `@downloadURL` pointing to the latest GitHu
 ### Usage
 
 1. Copy an image, focus a chat input, and press **Ctrl+V** (**Cmd+V** on macOS).
-2. Wait for the panel above the Twitch chat input (or the floating notification on Kick) and click the copy button to the right of the link.
+2. Wait for the panel above the Twitch or Kick chat input and click the copy button to the right of the link.
 3. Paste the link into chat and send the message yourself.
 
 Context-menu paste and other system paste shortcuts also work: the extension handles the `paste` event. Normal text pastes are unchanged. Password fields, disabled inputs, and pastes outside an editor are ignored.
 
-The panel stays visible until you close it. It is embedded in the Twitch page without covering chat messages, uses Twitch theme colors, and reattaches if Twitch replaces the chat input. If the chat input disappears or its layout is not recognized, a floating notification keeps the links available. Chat content and caret position are unchanged; the clipboard is overwritten only when you click the copy button. After a successful copy, the Morphicons/Lucide icon morphs into a green checkmark and changes back after 2 seconds. The animation respects reduced-motion preferences.
+The panel stays visible until you close it or successfully copy a link. It is embedded in Twitch and Kick without covering chat messages, uses the site's theme colors, and reattaches if the site replaces the chat input. If the chat input disappears or its layout is not recognized, a floating notification keeps the links available. Chat content and caret position are unchanged; the clipboard is overwritten only when you click the copy button. After a successful copy, the panel shows a three-second countdown and closes; copying again restarts the countdown. The Morphicons/Lucide icon morphs into a green checkmark and changes back after 2 seconds. The animation respects reduced-motion preferences.
 
 Each uploaded link also has a clickable image preview above its copy row, in both the inline panel and floating notification. Clicking a thumbnail opens the large on-page image viewer described below; failed previews disappear without affecting the link or copy button. Multiple uploads scroll within the panel.
 
@@ -112,12 +112,12 @@ Pushing a tag `vX.Y.Z` runs the same checks and publishes a GitHub Release with 
 - `imageuploader.meta.js` — userscript update metadata.
 - `SHA256SUMS` — SHA-256 checksums of the ZIP and JavaScript assets.
 
-To publish, set the same new, increasing **stable `X.Y.Z` version** in `package.json` and `extension/manifest.json`, commit and push the changes, then push the matching tag. For version 0.3.0:
+To publish, set the same new, increasing **stable `X.Y.Z` version** in `package.json` and `extension/manifest.json`, commit and push the changes, then push the matching tag. For version 0.3.2:
 
 ```sh
-bun run release:check v0.3.0
-git tag v0.3.0
-git push origin v0.3.0
+bun run release:check v0.3.2
+git tag v0.3.2
+git push origin v0.3.2
 ```
 
 Tag/version mismatches and prerelease tags fail before publishing. Published releases are not overwritten; use a new version and tag for changes. The workflow uses the built-in `GITHUB_TOKEN` with `contents: write` only in the release job; no personal token or extra secrets are required. GitHub Actions must be enabled and repository/organization policy must allow release creation. The repository must be public for anonymous downloads and Tampermonkey updates.
@@ -207,10 +207,10 @@ An internet connection is required to install Bun and locked packages. Building 
 
    WXT rebuilds and generates:
 
-   - `dist/imageuploader-firefox-0.3.0.zip`: unsigned extension.
-   - `dist/imageuploader-0.3.0-sources.zip`: source submission, including the configuration, lockfile, scripts, tests, license, and README.
+   - `dist/imageuploader-firefox-0.3.2.zip`: unsigned extension.
+   - `dist/imageuploader-0.3.2-sources.zip`: source submission, including the configuration, lockfile, scripts, tests, license, and README.
 
-For Chrome, use `bun run build:chrome` or `bun run package:chrome`. Its output is `dist/chrome/`, the timeout is 25 seconds, and the archive is `dist/imageuploader-chrome-0.3.0.zip`. `bun run build` processes both browser targets and the userscript; `bun run package` packages only the browser extensions.
+For Chrome, use `bun run build:chrome` or `bun run package:chrome`. Its output is `dist/chrome/`, the timeout is 25 seconds, and the archive is `dist/imageuploader-chrome-0.3.2.zip`. `bun run build` processes both browser targets and the userscript; `bun run package` packages only the browser extensions.
 
 ### Verification
 
