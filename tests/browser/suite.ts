@@ -695,6 +695,35 @@ async function checkNoticeCountdown() {
       },
     );
 
+    await check(
+      "repeat copy cancels the old countdown before calling the Tampermonkey clipboard API",
+      async () => {
+        const countdown = root.querySelector<HTMLElement>(".countdown")!;
+        let canceledBeforeWrite = false;
+        write = () => {
+          canceledBeforeWrite = countdown.hidden === true;
+          // GM.setClipboard can return an already-fulfilled promise. Native clicks
+          // may run its continuation before the next non-capturing click listener.
+          return Promise.resolve();
+        };
+        try {
+          notify("Uploaded. Copy the link:", ["https://twir.app/u/test"], true);
+          const copy = root.querySelector<HTMLButtonElement>(".copy-button")!;
+          copy.click();
+          await tick();
+          assert(!countdown.hidden, "initial copy did not start the countdown");
+          copy.click();
+          await tick();
+          assert(canceledBeforeWrite, "old countdown was canceled after the clipboard call");
+          assert(!countdown.hidden, "successful repeat copy lost its new countdown");
+          await waitForDismiss();
+          assert(!host.isConnected, "notice did not close after the repeat copy");
+        } finally {
+          root.querySelector<HTMLButtonElement>("header button")!.click();
+        }
+      },
+    );
+
     await check("updating a notice clears the previous copy countdown", async () => {
       write = async () => {};
       try {

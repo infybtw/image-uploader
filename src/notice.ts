@@ -155,8 +155,10 @@ export function createNotice(writeText?: WriteText, chatInput: Element | null = 
         writeText,
         dismissAfterCopy,
       );
-      // Keep the panel visible while a clipboard write is still pending.
-      copy.element.addEventListener("click", cancelDismiss);
+      // Cancel before the copy handler: Tampermonkey may fulfill GM.setClipboard
+      // immediately, and native clicks can flush microtasks between listeners.
+      // A later bubble listener would cancel the newly started countdown.
+      copy.element.addEventListener("click", cancelDismiss, { capture: true });
       copyButtons.push(copy);
       row.append(input, copy.element);
       upload.append(row);
