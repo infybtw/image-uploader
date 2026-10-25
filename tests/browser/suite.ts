@@ -4,7 +4,7 @@ import { serializeImage } from "../../src/clipboard";
 import { errorMessage } from "../../src/shared";
 import { createCopyButton } from "../../src/copy-button";
 import { createNotice } from "../../src/notice";
-import { findTwitchChatInput, mountNotice } from "../../src/notice-placement";
+import { findChatInput, mountNotice } from "../../src/notice-placement";
 import type { UploadReply } from "../../src/shared";
 import { observeChatPreviews } from "../../src/chat-previews";
 
@@ -45,6 +45,28 @@ function twitchChat() {
   editor.textContent = "unsent draft";
   wrapper.append(editor);
   chat.append(wrapper);
+  document.body.append(chat);
+  return { chat, editor };
+}
+
+function kickChat() {
+  const chat = document.createElement("div");
+  chat.id = "chatroom-footer";
+  chat.style.cssText = "display:flex;flex-direction:column;width:340px";
+  const composer = document.createElement("div");
+  const row = document.createElement("div");
+  row.id = "chat-input-wrapper";
+  row.style.display = "flex";
+  const wrapper = document.createElement("div");
+  const editor = document.createElement("div");
+  editor.contentEditable = "true";
+  editor.className = "editor-input";
+  editor.setAttribute("data-testid", "chat-input");
+  editor.textContent = "unsent draft";
+  wrapper.append(editor);
+  row.append(wrapper, document.createElement("button"));
+  composer.append(row);
+  chat.append(composer);
   document.body.append(chat);
   return { chat, editor };
 }
@@ -129,44 +151,61 @@ test("duplicate image URLs are collapsed and previews per message are bounded", 
   }
 });
 
-test("inline notices only target a Twitch chat input, not other sites or editors", () => {
+test("inline notices recognize Twitch containers without accepting bare editors", () => {
   const { chat, editor } = twitchChat();
   editor.setAttribute("data-a-target", "chat-input");
-  assert(findTwitchChatInput(editor, "www.twitch.tv") === chat, "Twitch chat not found");
-  assert(findTwitchChatInput(editor, "kick.com") === null, "Kick layout was changed");
-  assert(findTwitchChatInput(editor, "fake-twitch.tv") === null, "lookalike host accepted");
-  assert(findTwitchChatInput(textarea(), "www.twitch.tv") === null, "non-chat field accepted");
+  assert(findChatInput(editor, "www.twitch.tv") === chat, "Twitch chat not found");
+  assert(findChatInput(editor, "kick.com") === null, "Twitch container accepted on Kick");
+  assert(findChatInput(editor, "fake-twitch.tv") === null, "lookalike host accepted");
+  assert(findChatInput(textarea(), "www.twitch.tv") === null, "non-chat field accepted");
   editor.removeAttribute("data-a-target");
   chat.className = "";
   chat.setAttribute("data-a-target", "chat-input");
-  assert(findTwitchChatInput(editor, "twitch.tv") === chat, "data attribute not recognized");
+  assert(findChatInput(editor, "twitch.tv") === chat, "data attribute not recognized");
   chat.removeAttribute("data-a-target");
   editor.setAttribute("data-a-target", "chat-input");
-  assert(
-    findTwitchChatInput(editor, "twitch.tv") === null,
-    "editor itself accepted as a panel host",
-  );
+  assert(findChatInput(editor, "twitch.tv") === null, "editor itself accepted as a panel host");
 });
 
-test("inline notice sits above the chat editor without changing its draft or focus", () => {
-  const { chat, editor } = twitchChat();
-  editor.focus();
-  window.getSelection()!.selectAllChildren(editor);
-  const host = document.createElement("div");
-  const unmount = mountNotice(host, chat);
-  try {
-    assert(chat.firstElementChild === host, "panel was not placed above the editor");
-    assert(!editor.contains(host), "panel was inserted into the editor");
-    assert(host.dataset.placement === "chat", "inline styling not selected");
-    assert(getComputedStyle(host).position === "relative", "panel overlays the chat");
-    assert(editor.textContent === "unsent draft", "draft changed");
-    assert(document.activeElement === editor, "editor lost focus");
-    assert(window.getSelection()!.toString() === "unsent draft", "selection changed");
-  } finally {
-    unmount();
-    host.remove();
+test("Kick uses the chat footer, not its horizontal input row or an unrelated editor", () => {
+  const { chat, editor } = kickChat();
+  for (const hostname of ["kick.com", "www.kick.com", "player.kick.com"]) {
+    assert(findChatInput(editor, hostname) === chat, "Kick chat footer not found");
   }
+  for (const hostname of ["twitch.tv", "fake-kick.com", "kick.com.evil.com", "example.com"]) {
+    assert(findChatInput(editor, hostname) === null, "Kick footer accepted on another site");
+  }
+  assert(findChatInput(textarea(), "kick.com") === null, "unrelated input accepted");
+  chat.removeAttribute("id");
+  assert(findChatInput(editor, "kick.com") === null, "horizontal input row accepted");
+  editor.id = "chatroom-footer";
+  assert(findChatInput(editor, "kick.com") === null, "bare editor accepted as a panel host");
 });
+
+for (const [site, createChat] of [
+  ["Twitch", twitchChat],
+  ["Kick", kickChat],
+] as const) {
+  test(`${site}: inline notice sits above the editor without changing its draft or focus`, () => {
+    const { chat, editor } = createChat();
+    editor.focus();
+    window.getSelection()!.selectAllChildren(editor);
+    const host = document.createElement("div");
+    const unmount = mountNotice(host, chat);
+    try {
+      assert(chat.firstElementChild === host, "panel was not placed above the editor");
+      assert(!editor.contains(host), "panel was inserted into the editor");
+      assert(host.dataset.placement === "chat", "inline styling not selected");
+      assert(getComputedStyle(host).position === "relative", "panel overlays the chat");
+      assert(editor.textContent === "unsent draft", "draft changed");
+      assert(document.activeElement === editor, "editor lost focus");
+      assert(window.getSelection()!.toString() === "unsent draft", "selection changed");
+    } finally {
+      unmount();
+      host.remove();
+    }
+  });
+}
 
 test("unrecognized layouts keep a floating notification", () => {
   const host = document.createElement("div");
@@ -400,40 +439,51 @@ async function checkChatPreviews() {
 
 async function checkNoticePlacement() {
   const tick = () => new Promise<void>((resolve) => window.setTimeout(resolve, 0));
-  await check("notice survives chat removal and reattaches when Twitch remounts chat", async () => {
-    document.body.replaceChildren();
-    const { chat } = twitchChat();
-    const host = document.createElement("div");
-    host.textContent = "https://twir.app/u/preserved";
-    const unmount = mountNotice(host, chat);
-    try {
-      chat.remove();
-      const bareEditor = document.createElement("div");
-      bareEditor.contentEditable = "true";
-      bareEditor.setAttribute("data-a-target", "chat-input");
-      document.body.append(bareEditor);
-      await tick();
-      assert(host.isConnected, "links disappeared with the old chat");
-      assert(
-        host.getAttribute("data-placement") === "floating",
-        "missing chat did not use fallback",
-      );
-      assert(!bareEditor.contains(host), "fallback panel was mounted inside a bare editor");
-      const replacement = twitchChat();
-      await tick();
-      assert(replacement.chat.firstElementChild === host, "panel did not reattach");
-      assert(host.getAttribute("data-placement") === "chat", "inline styling not restored");
-      assert(host.textContent === "https://twir.app/u/preserved", "links lost on remount");
-      host.remove();
-      await tick();
-      assert(host.isConnected, "Twitch removing only the panel was not repaired");
-    } finally {
-      unmount();
-      host.remove();
-    }
-    await tick();
-    assert(!host.isConnected, "dismissed panel reappeared");
-  });
+  for (const [site, createChat, createOtherChat] of [
+    ["Twitch", twitchChat, kickChat],
+    ["Kick", kickChat, twitchChat],
+  ] as const) {
+    await check(
+      `${site}: notice survives chat removal and reattaches to the matching composer`,
+      async () => {
+        document.body.replaceChildren();
+        const { chat } = createChat();
+        const host = document.createElement("div");
+        host.textContent = "https://twir.app/u/preserved";
+        const unmount = mountNotice(host, chat);
+        try {
+          chat.remove();
+          const bareEditor = document.createElement("div");
+          bareEditor.contentEditable = "true";
+          bareEditor.setAttribute("data-a-target", "chat-input");
+          if (site === "Kick") bareEditor.id = "chatroom-footer";
+          document.body.append(bareEditor);
+          const other = createOtherChat();
+          await tick();
+          assert(host.isConnected, "links disappeared with the old chat");
+          assert(
+            host.getAttribute("data-placement") === "floating",
+            "missing chat did not use fallback",
+          );
+          assert(!bareEditor.contains(host), "fallback panel was mounted inside a bare editor");
+          assert(!other.chat.contains(host), "panel attached to another site's composer");
+          const replacement = createChat();
+          await tick();
+          assert(replacement.chat.firstElementChild === host, "panel did not reattach");
+          assert(host.getAttribute("data-placement") === "chat", "inline styling not restored");
+          assert(host.textContent === "https://twir.app/u/preserved", "links lost on remount");
+          host.remove();
+          await tick();
+          assert(host.isConnected, "removing only the panel was not repaired");
+        } finally {
+          unmount();
+          host.remove();
+        }
+        await tick();
+        assert(!host.isConnected, "dismissed panel reappeared");
+      },
+    );
+  }
 }
 
 async function checkCopyButtons() {
@@ -563,64 +613,61 @@ async function captureNotices(run: (create: TestNoticeFactory) => Promise<void>)
 
 async function checkNoticePreviews(testNotice: TestNoticeFactory) {
   const { chat } = twitchChat();
+  const kick = kickChat();
   try {
-    for (const placement of [null, chat]) {
-      await check(
-        `${placement ? "inline" : "floating"} upload panel shows a preview for each link`,
-        async () => {
-          let copied = "";
-          const { notify, root } = testNotice(async (text) => {
-            copied = text;
-          }, placement);
-          const urls = ["https://twir.app/u/First", "https://twir.app/u/Second"];
-          try {
-            notify("Uploaded. Copy the link:", urls, true);
-            const images = root.querySelectorAll<HTMLImageElement>(".preview img");
-            assert(images.length === 2, "missing upload previews");
-            for (const [index, image] of images.entries()) {
-              const preview = image.parentElement as HTMLAnchorElement;
-              assert(
-                image.src === urls[index] && preview.href === urls[index],
-                "wrong preview URL",
-              );
-              assert(
-                image.loading === "lazy" && image.decoding === "async",
-                "eager preview loading",
-              );
-              assert(image.referrerPolicy === "no-referrer", "page referrer can leak");
-              assert(
-                preview.target === "_blank" && preview.rel.includes("noreferrer"),
-                "unsafe preview link",
-              );
-              assert(
-                preview.nextElementSibling?.className === "link",
-                "preview not above its copy row",
-              );
-            }
-            const links = root.querySelector<HTMLElement>(".links")!;
-            assert(getComputedStyle(links).overflowY === "auto", "multiple uploads cannot scroll");
-            images[0]!.dispatchEvent(new Event("error"));
-            assert(root.querySelectorAll(".preview").length === 1, "broken preview retained");
-            const inputs = root.querySelectorAll<HTMLInputElement>("input");
+    for (const [label, placement] of [
+      ["floating", null],
+      ["Twitch inline", chat],
+      ["Kick inline", kick.chat],
+    ] as const) {
+      await check(`${label} upload panel shows a preview for each link`, async () => {
+        let copied = "";
+        const { notify, root } = testNotice(async (text) => {
+          copied = text;
+        }, placement);
+        const urls = ["https://twir.app/u/First", "https://twir.app/u/Second"];
+        try {
+          notify("Uploaded. Copy the link:", urls, true);
+          const images = root.querySelectorAll<HTMLImageElement>(".preview img");
+          assert(images.length === 2, "missing upload previews");
+          for (const [index, image] of images.entries()) {
+            const preview = image.parentElement as HTMLAnchorElement;
+            assert(image.src === urls[index] && preview.href === urls[index], "wrong preview URL");
+            assert(image.loading === "lazy" && image.decoding === "async", "eager preview loading");
+            assert(image.referrerPolicy === "no-referrer", "page referrer can leak");
             assert(
-              inputs.length === 2 && inputs[0]!.value === urls[0],
-              "broken image removed its link",
+              preview.target === "_blank" && preview.rel.includes("noreferrer"),
+              "unsafe preview link",
             );
-            root.querySelectorAll<HTMLButtonElement>(".copy-button")[1]!.click();
-            await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
-            assert(copied === urls[1], "preview changed copy behavior");
-            notify("Uploading another image…", [], true);
-            assert(!root.querySelector(".preview, .link"), "update retained old previews or links");
-            notify("Not an Uploader image", ["https://twir.app/uploader"], true);
-            assert(!root.querySelector(".preview"), "non-image URL previewed");
-          } finally {
-            root.querySelector<HTMLButtonElement>("header button")!.click();
+            assert(
+              preview.nextElementSibling?.className === "link",
+              "preview not above its copy row",
+            );
           }
-        },
-      );
+          const links = root.querySelector<HTMLElement>(".links")!;
+          assert(getComputedStyle(links).overflowY === "auto", "multiple uploads cannot scroll");
+          images[0]!.dispatchEvent(new Event("error"));
+          assert(root.querySelectorAll(".preview").length === 1, "broken preview retained");
+          const inputs = root.querySelectorAll<HTMLInputElement>("input");
+          assert(
+            inputs.length === 2 && inputs[0]!.value === urls[0],
+            "broken image removed its link",
+          );
+          root.querySelectorAll<HTMLButtonElement>(".copy-button")[1]!.click();
+          await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+          assert(copied === urls[1], "preview changed copy behavior");
+          notify("Uploading another image…", [], true);
+          assert(!root.querySelector(".preview, .link"), "update retained old previews or links");
+          notify("Not an Uploader image", ["https://twir.app/uploader"], true);
+          assert(!root.querySelector(".preview"), "non-image URL previewed");
+        } finally {
+          root.querySelector<HTMLButtonElement>("header button")!.click();
+        }
+      });
     }
   } finally {
     chat.remove();
+    kick.chat.remove();
   }
 }
 
@@ -790,6 +837,51 @@ async function checkNoticeCountdown() {
         latest.root.querySelector<HTMLButtonElement>("header button")!.click();
       }
     });
+
+    await check(
+      "Kick panel uses the chat theme and closes after copying without remounting",
+      async () => {
+        const { chat, editor } = kickChat();
+        chat.style.setProperty("--color-surface-bg-default", "#112233");
+        chat.style.setProperty("--color-surface-fg-default", "#ddeeff");
+        chat.style.setProperty("--color-surface-fg-decorative", "#445566");
+        chat.style.setProperty("--color-surface-bg-highest", "#223344");
+        let copied = "";
+        const panel = testNotice(
+          (text) => {
+            copied = text;
+            return Promise.resolve();
+          },
+          findChatInput(editor, "kick.com"),
+        );
+        try {
+          panel.notify("Uploaded. Copy the link:", ["https://twir.app/u/kick-test"], true);
+          assert(chat.firstElementChild === panel.host, "panel not above the Kick composer");
+          const card = getComputedStyle(panel.root.querySelector<HTMLElement>(".card")!);
+          assert(card.backgroundColor === "rgb(17, 34, 51)", "Kick background not used");
+          assert(card.color === "rgb(221, 238, 255)", "Kick text color not used");
+          assert(card.borderTopColor === "rgb(68, 85, 102)", "Kick border color not used");
+          assert(card.boxShadow === "none", "floating card shadow retained");
+          assert(
+            getComputedStyle(panel.root.querySelector<HTMLElement>(".link")!).backgroundColor ===
+              "rgb(34, 51, 68)",
+            "Kick input background not used",
+          );
+          panel.root.querySelector<HTMLButtonElement>(".copy-button")!.click();
+          await tick();
+          assert(copied === "https://twir.app/u/kick-test", "wrong Kick link copied");
+          assert(!panel.root.querySelector<HTMLElement>(".countdown")!.hidden, "countdown missing");
+          await waitForDismiss();
+          assert(!panel.host.isConnected, "Kick panel did not close after copying");
+          await tick();
+          assert(!panel.host.isConnected, "Kick panel was remounted after dismissal");
+          assert(editor.textContent === "unsent draft", "Kick draft changed");
+        } finally {
+          panel.root.querySelector<HTMLButtonElement>("header button")!.click();
+          chat.remove();
+        }
+      },
+    );
   });
 }
 

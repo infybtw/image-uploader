@@ -40,15 +40,17 @@ export function createNotice(writeText?: WriteText, chatInput: Element | null = 
       animation: countdown ${COPY_DISMISS_DELAY}ms linear forwards; }
     @keyframes countdown { from { transform: scaleX(1); } to { transform: scaleX(0); } }
     :host([data-placement="chat"]) .card { width: 100%; max-width: none; padding: 10px;
-      background: var(--color-background-base, #18181b); color: var(--color-text-base, #efeff1);
-      border-color: var(--color-border-base, #53535f); border-radius: 6px; box-shadow: none;
+      background: var(--color-background-base, var(--color-surface-bg-default, #18181b));
+      color: var(--color-text-base, var(--color-surface-fg-default, #efeff1));
+      border-color: var(--color-border-base, var(--color-surface-fg-decorative, #53535f));
+      border-radius: 6px; box-shadow: none;
       font-size: 12px; line-height: 1.4; }
     :host([data-placement="chat"]) header button { background: transparent; }
     :host([data-placement="chat"]) p { margin-top: 4px; }
     :host([data-placement="chat"]) .links { max-height: 180px; overflow-y: auto; }
     :host([data-placement="chat"]) .link { margin-top: 6px;
-      background: var(--color-background-input, #09090b); }
-    :host([data-placement="chat"]) input { color: var(--color-text-base, #efeff1); }
+      background: var(--color-background-input, var(--color-surface-bg-highest, #09090b)); }
+    :host([data-placement="chat"]) input { color: var(--color-text-base, var(--color-surface-fg-default, #efeff1)); }
     @media (prefers-reduced-motion: reduce) {
       .copy-button { transition: none; }
       .countdown-bar { animation: none; }
