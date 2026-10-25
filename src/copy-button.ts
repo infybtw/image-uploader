@@ -8,6 +8,7 @@ export function createCopyButton(
   url: string,
   onError: (message: string) => void,
   writeText: WriteText = (text) => navigator.clipboard.writeText(text),
+  onCopied: () => void = () => {},
 ) {
   const button = document.createElement("button");
   button.type = "button";
@@ -58,6 +59,7 @@ export function createCopyButton(
         setLabel("Copy link");
         morph.morphTo(Copy, "snappy");
       }, 2_000);
+      onCopied();
     } catch (error) {
       if (destroyed) return;
       button.dataset.state = "idle";

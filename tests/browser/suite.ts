@@ -3,6 +3,7 @@ import { browser } from "wxt/browser";
 import { serializeImage } from "../../src/clipboard";
 import { errorMessage } from "../../src/shared";
 import { createCopyButton } from "../../src/copy-button";
+import { createNotice } from "../../src/notice";
 import { findTwitchChatInput, mountNotice } from "../../src/notice-placement";
 import type { UploadReply } from "../../src/shared";
 
@@ -255,6 +256,7 @@ async function checkClipboard() {
   }
   await checkNoticePlacement();
   await checkCopyButtons();
+  await checkNoticeCountdown();
   await fetch("/results", { method: "POST", body: JSON.stringify(results) });
 }
 
@@ -392,6 +394,110 @@ async function checkCopyButtons() {
     resolve();
     await tick();
     assert(control.element.dataset.state === "copying", "destroyed control was updated");
+  });
+}
+
+function testNotice(writeText: (text: string) => Promise<void>) {
+  const attachShadow = Element.prototype.attachShadow;
+  let root: ShadowRoot | undefined;
+  Element.prototype.attachShadow = function (options) {
+    root = attachShadow.call(this, options);
+    return root;
+  };
+  try {
+    const notify = createNotice(writeText);
+    assert(root, "notice shadow root not created");
+    return { notify, root, host: root.host };
+  } finally {
+    Element.prototype.attachShadow = attachShadow;
+  }
+}
+
+async function checkNoticeCountdown() {
+  const tick = () => new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+  const waitForDismiss = () => new Promise<void>((resolve) => window.setTimeout(resolve, 3_100));
+  let write: () => Promise<void> = async () => {};
+  const { notify, root, host } = testNotice(() => write());
+
+  await check(
+    "successful copy starts a three-second countdown and dismisses a persistent notice",
+    async () => {
+      const pending = Promise.withResolvers<void>();
+      write = () => pending.promise;
+      try {
+        notify("Uploaded. Copy the link:", ["https://twir.app/u/test"], true);
+        const copy = root.querySelector<HTMLButtonElement>(".copy-button")!;
+        const countdown = root.querySelector<HTMLElement>(".countdown")!;
+        assert(countdown.hidden, "countdown visible before copying");
+        copy.click();
+        await tick();
+        assert(countdown.hidden && host.isConnected, "countdown started before copy succeeded");
+        pending.resolve();
+        await tick();
+        assert(!countdown.hidden, "countdown not shown after copying");
+        const firstBar = countdown.firstElementChild!;
+        assert(getComputedStyle(firstBar).animationDuration === "3s", "wrong countdown duration");
+        write = () => Promise.resolve();
+        copy.click();
+        await tick();
+        assert(
+          countdown.firstElementChild !== firstBar,
+          "repeat copy did not restart the countdown",
+        );
+        await waitForDismiss();
+        assert(!host.isConnected, "persistent notice did not close after copying");
+        await tick();
+        assert(!host.isConnected, "dismissed notice was remounted");
+      } finally {
+        root.querySelector<HTMLButtonElement>("header button")!.click();
+      }
+    },
+  );
+
+  await check(
+    "failed retry cancels an active countdown and leaves the notice visible",
+    async () => {
+      let fail = false;
+      write = async () => {
+        if (fail) throw new Error("Clipboard blocked");
+      };
+      try {
+        notify("Uploaded. Copy the link:", ["https://twir.app/u/test"], true);
+        const copy = root.querySelector<HTMLButtonElement>(".copy-button")!;
+        copy.click();
+        await tick();
+        fail = true;
+        copy.click();
+        await tick();
+        assert(
+          root.querySelector<HTMLElement>(".countdown")!.hidden,
+          "failed copy shows countdown",
+        );
+        assert(root.textContent!.includes("Clipboard blocked"), "copy error not shown");
+        await waitForDismiss();
+        assert(host.isConnected, "notice closed after a copy error");
+      } finally {
+        root.querySelector<HTMLButtonElement>("header button")!.click();
+      }
+    },
+  );
+
+  await check("updating a notice clears the previous copy countdown", async () => {
+    write = async () => {};
+    try {
+      notify("Uploaded. Copy the link:", ["https://twir.app/u/test"], true);
+      root.querySelector<HTMLButtonElement>(".copy-button")!.click();
+      await tick();
+      notify("Uploading another image…", [], true);
+      assert(
+        root.querySelector<HTMLElement>(".countdown")!.hidden,
+        "stale countdown still visible",
+      );
+      await waitForDismiss();
+      assert(host.isConnected, "previous countdown dismissed the updated notice");
+    } finally {
+      root.querySelector<HTMLButtonElement>("header button")!.click();
+    }
   });
 }
 

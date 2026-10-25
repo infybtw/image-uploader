@@ -1,12 +1,14 @@
 import { createCopyButton, type WriteText } from "./copy-button";
 import { mountNotice } from "./notice-placement";
 
+const COPY_DISMISS_DELAY = 3_000;
+
 export function createNotice(writeText?: WriteText, chatInput: Element | null = null) {
   const host = document.createElement("div");
   const root = host.attachShadow({ mode: "closed" });
   const style = document.createElement("style");
   style.textContent = `
-    .card { box-sizing: border-box; width: 360px; max-width: calc(100vw - 40px); padding: 16px;
+    .card { position: relative; overflow: hidden; box-sizing: border-box; width: 360px; max-width: calc(100vw - 40px); padding: 16px;
       background: #18181b; color: #fafafa; border: 1px solid #7160ec; border-radius: 12px;
       box-shadow: 0 8px 32px #0006; font: 14px/1.5 system-ui, sans-serif; }
     header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
@@ -23,6 +25,10 @@ export function createNotice(writeText?: WriteText, chatInput: Element | null = 
     .copy-button:focus-visible { outline: 2px solid #a78bfa; outline-offset: -2px; }
     .copy-button:disabled { cursor: wait; }
     .copy-button[data-state="copied"] { color: #4ade80; }
+    .countdown { position: absolute; top: 0; left: 0; right: 0; height: 3px; background: #fff3; }
+    .countdown-bar { height: 100%; background: #fff; transform-origin: left;
+      animation: countdown ${COPY_DISMISS_DELAY}ms linear forwards; }
+    @keyframes countdown { from { transform: scaleX(1); } to { transform: scaleX(0); } }
     :host([data-placement="chat"]) .card { width: 100%; max-width: none; padding: 10px;
       background: var(--color-background-base, #18181b); color: var(--color-text-base, #efeff1);
       border-color: var(--color-border-base, #53535f); border-radius: 6px; box-shadow: none;
@@ -33,7 +39,10 @@ export function createNotice(writeText?: WriteText, chatInput: Element | null = 
     :host([data-placement="chat"]) .link { margin-top: 6px;
       background: var(--color-background-input, #09090b); }
     :host([data-placement="chat"]) input { color: var(--color-text-base, #efeff1); }
-    @media (prefers-reduced-motion: reduce) { .copy-button { transition: none; } }
+    @media (prefers-reduced-motion: reduce) {
+      .copy-button { transition: none; }
+      .countdown-bar { animation: none; }
+    }
   `;
   let unmount = () => {};
   let dismissTimer: number | undefined;
@@ -64,12 +73,29 @@ export function createNotice(writeText?: WriteText, chatInput: Element | null = 
   status.setAttribute("role", "status");
   const links = document.createElement("div");
   links.className = "links";
-  card.append(header, status, links);
+  const countdown = document.createElement("div");
+  countdown.className = "countdown";
+  countdown.hidden = true;
+  countdown.setAttribute("aria-hidden", "true");
+  const cancelDismiss = () => {
+    window.clearTimeout(dismissTimer);
+    countdown.hidden = true;
+    countdown.replaceChildren();
+  };
+  const dismissAfterCopy = () => {
+    cancelDismiss();
+    const bar = document.createElement("div");
+    bar.className = "countdown-bar";
+    countdown.append(bar);
+    countdown.hidden = false;
+    dismissTimer = window.setTimeout(dismiss, COPY_DISMISS_DELAY);
+  };
+  card.append(header, status, links, countdown);
   root.append(style, card);
   unmount = mountNotice(host, chatInput);
 
   return (message: string, urls: string[] = [], persistent = false) => {
-    window.clearTimeout(dismissTimer);
+    cancelDismiss();
     clearCopyButtons();
     if (!host.isConnected) {
       unmount();
@@ -89,15 +115,13 @@ export function createNotice(writeText?: WriteText, chatInput: Element | null = 
         url,
         (error) => {
           status.textContent = error;
-          window.clearTimeout(dismissTimer);
+          cancelDismiss();
         },
         writeText,
+        dismissAfterCopy,
       );
-      copy.element.addEventListener("click", () => {
-        // Keep the success check visible even when copying just before auto-dismiss.
-        window.clearTimeout(dismissTimer);
-        if (!persistent) dismissTimer = window.setTimeout(dismiss, 8_000);
-      });
+      // Keep the panel visible while a clipboard write is still pending.
+      copy.element.addEventListener("click", cancelDismiss);
       copyButtons.push(copy);
       row.append(input, copy.element);
       links.append(row);
