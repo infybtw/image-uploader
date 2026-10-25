@@ -8,6 +8,7 @@ import { findChatInput, mountNotice } from "../../src/notice-placement";
 import type { UploadReply } from "../../src/shared";
 import { observeChatPreviews } from "../../src/chat-previews";
 import { checkImageViewer } from "./image-viewer";
+import { checkImageEditor, editorFixture } from "./image-editor";
 import {
   createPreviewPageResolver,
   extractPreviewImage,
@@ -458,6 +459,7 @@ async function checkClipboard() {
   });
   await checkChatPreviews();
   await checkImageViewer(check);
+  await checkImageEditor(check);
   await checkNoticePlacement();
   await checkCopyButtons();
   await checkNoticeCountdown();
@@ -891,6 +893,7 @@ async function checkCopyButtons() {
 type TestNoticeFactory = (
   writeText: (text: string) => Promise<void>,
   chatInput?: Element | null,
+  editing?: Parameters<typeof createNotice>[2],
 ) => { notify: ReturnType<typeof createNotice>; root: ShadowRoot; host: Element };
 
 async function captureNotices(run: (create: TestNoticeFactory) => Promise<void>) {
@@ -902,9 +905,9 @@ async function captureNotices(run: (create: TestNoticeFactory) => Promise<void>)
     return root;
   };
   try {
-    await run((writeText, chatInput = null) => {
+    await run((writeText, chatInput = null, editing) => {
       const index = roots.length;
-      const notify = createNotice(writeText, chatInput);
+      const notify = createNotice(writeText, chatInput, editing);
       const root = roots[index];
       assert(root, "notice shadow root not created");
       return { notify, root, host: root.host };
@@ -987,6 +990,70 @@ async function checkNoticePreviews(testNotice: TestNoticeFactory) {
 async function checkNoticeCountdown() {
   await captureNotices(async (testNotice) => {
     await checkNoticePreviews(testNotice);
+    await check(
+      "upload preview opens editor and replaces only the edited link after upload",
+      async () => {
+        const file = await editorFixture();
+        const urls = ["https://twir.app/u/Original", "https://twir.app/u/Other"];
+        const nextUrl = "https://twir.app/u/Edited";
+        const files = new Map([
+          [urls[0]!, file],
+          [urls[1]!, file],
+        ]);
+        const pending = Promise.withResolvers<string>();
+        let copied = "";
+        const { notify, root } = testNotice(
+          async (text) => {
+            copied = text;
+          },
+          null,
+          {
+            files,
+            upload: () => pending.promise,
+          },
+        );
+        try {
+          notify("Uploaded", urls, true);
+          const preview = root.querySelector<HTMLAnchorElement>(".preview")!;
+          assert(preview.title === "Edit image", "upload preview not editable");
+          preview.click();
+          const editorHost = document.querySelector<HTMLElement>("[data-imageuploader-editor]")!;
+          assert(editorHost?.shadowRoot, "preview did not open editor overlay");
+          const buttons = () => [...editorHost.shadowRoot!.querySelectorAll("button")];
+          const save = buttons().find((button) => button.textContent === "Upload edited image")!;
+          for (let count = 0; save.disabled && count < 100; count++)
+            await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
+          assert(!save.disabled, "local original did not load");
+          save.click();
+          assert(
+            root.querySelector("input")!.value === urls[0],
+            "original link replaced before success",
+          );
+          pending.resolve(nextUrl);
+          for (let count = 0; editorHost.isConnected && count < 100; count++)
+            await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
+          assert(!editorHost.isConnected, "successful editor did not close");
+          const inputs = root.querySelectorAll("input");
+          assert(
+            inputs[0]!.value === nextUrl && inputs[1]!.value === urls[1],
+            "wrong upload link replaced",
+          );
+          assert(
+            files.get(nextUrl)?.type === "image/png",
+            "edited source not retained for reopening",
+          );
+          assert(
+            root.activeElement === root.querySelector(".preview"),
+            "focus not restored to updated preview",
+          );
+          root.querySelector<HTMLButtonElement>(".copy-button")!.click();
+          await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+          assert(copied === nextUrl, "copy button still copies original link");
+        } finally {
+          root.querySelector<HTMLButtonElement>("header button")!.click();
+        }
+      },
+    );
     const tick = () => new Promise<void>((resolve) => window.setTimeout(resolve, 0));
     const waitForDismiss = () => new Promise<void>((resolve) => window.setTimeout(resolve, 3_100));
     let write: () => Promise<void> = async () => {};

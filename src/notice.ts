@@ -2,12 +2,17 @@ import { createCopyButton, type WriteText } from "./copy-button";
 import { mountNotice } from "./notice-placement";
 import { getUploaderImageUrl } from "./shared";
 import { bindImageViewer } from "./image-viewer";
+import { openImageEditor } from "./image-editor";
 
 const COPY_DISMISS_DELAY = 3_000;
 let latestNoticeId = 0;
 let dismissActiveNotice: (() => void) | undefined;
 
-export function createNotice(writeText?: WriteText, chatInput: Element | null = null) {
+export function createNotice(
+  writeText?: WriteText,
+  chatInput: Element | null = null,
+  editing?: { files: Map<string, File>; upload: (file: File) => Promise<string> },
+) {
   const noticeId = ++latestNoticeId;
   const host = document.createElement("div");
   const root = host.attachShadow({ mode: "closed" });
@@ -59,12 +64,14 @@ export function createNotice(writeText?: WriteText, chatInput: Element | null = 
   `;
   let unmount = () => {};
   let dismissTimer: number | undefined;
+  let closeEditor: (() => void) | undefined;
   let copyButtons: ReturnType<typeof createCopyButton>[] = [];
   const clearCopyButtons = () => {
     for (const button of copyButtons) button.destroy();
     copyButtons = [];
   };
   const dismiss = () => {
+    closeEditor?.();
     window.clearTimeout(dismissTimer);
     clearCopyButtons();
     unmount();
@@ -110,7 +117,7 @@ export function createNotice(writeText?: WriteText, chatInput: Element | null = 
   dismissActiveNotice = dismiss;
   unmount = mountNotice(host, chatInput);
 
-  return (message: string, urls: string[] = [], persistent = false) => {
+  const notify = (message: string, urls: string[] = [], persistent = false) => {
     // Late upload results must not bring back a superseded notification.
     if (noticeId !== latestNoticeId) return;
     cancelDismiss();
@@ -122,7 +129,7 @@ export function createNotice(writeText?: WriteText, chatInput: Element | null = 
     }
     status.textContent = message;
     links.replaceChildren();
-    for (const url of urls) {
+    for (const [index, url] of urls.entries()) {
       const upload = document.createElement("div");
       const imageUrl = getUploaderImageUrl(url);
       if (imageUrl) {
@@ -136,7 +143,36 @@ export function createNotice(writeText?: WriteText, chatInput: Element | null = 
         image.loading = "lazy";
         image.decoding = "async";
         image.referrerPolicy = "no-referrer";
-        bindImageViewer(preview, image);
+        const file = editing?.files.get(url);
+        if (editing && file) {
+          preview.title = "Edit image";
+          preview.setAttribute("aria-label", "Edit uploaded image");
+          preview.setAttribute("aria-haspopup", "dialog");
+          preview.addEventListener("click", (event) => {
+            if (
+              event.button !== 0 ||
+              event.ctrlKey ||
+              event.metaKey ||
+              event.shiftKey ||
+              event.altKey
+            )
+              return;
+            event.preventDefault();
+            event.stopPropagation();
+            cancelDismiss();
+            closeEditor = openImageEditor(file, preview, async (edited) => {
+              const nextUrl = await editing.upload(edited);
+              editing.files.set(nextUrl, edited);
+              const nextUrls = [...urls];
+              nextUrls[index] = nextUrl;
+              if (!nextUrls.includes(url)) editing.files.delete(url);
+              notify("Edited image uploaded. Copy the link:", nextUrls, true);
+              return (
+                links.children[index]?.querySelector<HTMLAnchorElement>(".preview") ?? undefined
+              );
+            });
+          });
+        } else bindImageViewer(preview, image);
         image.addEventListener("error", () => preview.remove(), { once: true });
         image.src = imageUrl;
         preview.append(image);
@@ -169,4 +205,5 @@ export function createNotice(writeText?: WriteText, chatInput: Element | null = 
     }
     if (!persistent) dismissTimer = window.setTimeout(dismiss, 8_000);
   };
+  return notify;
 }

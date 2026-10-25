@@ -28,7 +28,11 @@ export function registerPasteHandler(
         event.stopImmediatePropagation();
         // Keep this synchronous: the browser's normal paste must already be cancelled.
         if (busy) return;
-        const notify = createNotice(writeText, findChatInput(editor));
+        const originals = new Map<string, File>();
+        const notify = createNotice(writeText, findChatInput(editor), {
+          files: originals,
+          upload: async (file) => upload(await serializeImage(file)),
+        });
         busy = true;
         void (async () => {
           const urls: string[] = [];
@@ -44,7 +48,9 @@ export function registerPasteHandler(
               stage = `Reading image ${index + 1}/${files.length}`;
               const image = await serializeImage(file);
               stage = `Uploading image ${index + 1}/${files.length}`;
-              urls.push(await upload(image));
+              const url = await upload(image);
+              originals.set(url, file);
+              urls.push(url);
             }
             notify("Uploaded. Copy the link:", urls, true);
           } catch (error) {

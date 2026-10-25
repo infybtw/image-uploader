@@ -54,7 +54,13 @@ Context-menu paste and other system paste shortcuts also work: the extension han
 
 The panel stays visible until you close it or successfully copy a link. It is embedded in Twitch and Kick without covering chat messages, uses the site's theme colors, and reattaches if the site replaces the chat input. If the chat input disappears or its layout is not recognized, a floating notification keeps the links available. Chat content and caret position are unchanged; the clipboard is overwritten only when you click the copy button. After a successful copy, the panel shows a three-second countdown and closes; copying again restarts the countdown. The Morphicons/Lucide icon morphs into a green checkmark and changes back after 2 seconds. The animation respects reduced-motion preferences.
 
-Each uploaded link also has a clickable image preview above its copy row, in both the inline panel and floating notification. Clicking a thumbnail opens the large on-page image viewer described below; failed previews disappear without affecting the link or copy button. Multiple uploads scroll within the panel.
+Each uploaded link also has a clickable image preview above its copy row, in both the inline panel and floating notification. Clicking an upload thumbnail opens a full-screen image editor overlay; failed previews disappear without affecting the link or copy button. Multiple uploads scroll within the panel.
+
+### Image editor
+
+Click your uploaded image's preview to edit it without leaving the site. Select **Crop**, drag a rectangle, then use **Apply** or **Cancel** directly below the selection. Cancel removes only the crop selection, keeping other edits. **Draw** provides a brush with color and size controls. You can also rotate, flip horizontally, use the animated **Undo / Redo** icons (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z), or **Reset** to the image you opened. Icon animations respect reduced-motion preferences. Close with **Escape** or **×** to discard edits without uploading.
+
+Edits use the local original, not the remote thumbnail. **Upload edited image** exports a PNG and uploads it through the same uploader, replacing only that image's link and preview after success. The old public upload is not deleted. Failed uploads keep the editor and edits available for retry. Opening the updated preview lets you edit the new version again. Editing is limited to 32 megapixels; animated GIFs become still PNGs. Edits are kept only in memory, and closing the editor discards unsaved work.
 
 Multiple images upload sequentially. Failed uploads are not retried automatically; completed links remain available if a later upload fails.
 
@@ -68,7 +74,7 @@ Previews work for existing and newly arriving messages, including after chat nav
 
 ### Large image viewer
 
-Click any thumbnail in chat or the upload panel to view the image centered over a darkened, blurred backdrop without leaving the site. The image initially fits the available space. The same viewer is included in both browser extensions and the userscript.
+Click any thumbnail in chat to view the image centered over a darkened, blurred backdrop without leaving the site. The image initially fits the available space. The same viewer is included in both browser extensions and the userscript. Your own upload-panel thumbnails open the image editor instead.
 
 - Zoom with the mouse wheel, a two-finger pinch, the **+ / −** buttons, or the **+ / −** keys, up to **800%**. Wheel and pinch zoom follow the pointer/gesture position.
 - Drag an enlarged image to pan; arrow keys also pan, and **Shift + arrow** moves farther.
@@ -112,12 +118,12 @@ Pushing a tag `vX.Y.Z` runs the same checks and publishes a GitHub Release with 
 - `imageuploader.meta.js` — userscript update metadata.
 - `SHA256SUMS` — SHA-256 checksums of the ZIP and JavaScript assets.
 
-To publish, set the same new, increasing **stable `X.Y.Z` version** in `package.json` and `extension/manifest.json`, commit and push the changes, then push the matching tag. For version 0.4.0:
+To publish, set the same new, increasing **stable `X.Y.Z` version** in `package.json` and `extension/manifest.json`, commit and push the changes, then push the matching tag. For version 0.5.0:
 
 ```sh
-bun run release:check v0.4.0
-git tag v0.4.0
-git push origin v0.4.0
+bun run release:check v0.5.0
+git tag v0.5.0
+git push origin v0.5.0
 ```
 
 Tag/version mismatches and prerelease tags fail before publishing. Published releases are not overwritten; use a new version and tag for changes. The workflow uses the built-in `GITHUB_TOKEN` with `contents: write` only in the release job; no personal token or extra secrets are required. GitHub Actions must be enabled and repository/organization policy must allow release creation. The repository must be public for anonymous downloads and Tampermonkey updates.
@@ -207,10 +213,10 @@ An internet connection is required to install Bun and locked packages. Building 
 
    WXT rebuilds and generates:
 
-   - `dist/imageuploader-firefox-0.4.0.zip`: unsigned extension.
-   - `dist/imageuploader-0.4.0-sources.zip`: source submission, including the configuration, lockfile, scripts, tests, license, and README.
+   - `dist/imageuploader-firefox-0.5.0.zip`: unsigned extension.
+   - `dist/imageuploader-0.5.0-sources.zip`: source submission, including the configuration, lockfile, scripts, tests, license, and README.
 
-For Chrome, use `bun run build:chrome` or `bun run package:chrome`. Its output is `dist/chrome/`, the timeout is 25 seconds, and the archive is `dist/imageuploader-chrome-0.4.0.zip`. `bun run build` processes both browser targets and the userscript; `bun run package` packages only the browser extensions.
+For Chrome, use `bun run build:chrome` or `bun run package:chrome`. Its output is `dist/chrome/`, the timeout is 25 seconds, and the archive is `dist/imageuploader-chrome-0.5.0.zip`. `bun run build` processes both browser targets and the userscript; `bun run package` packages only the browser extensions.
 
 ### Verification
 

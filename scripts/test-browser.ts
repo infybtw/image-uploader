@@ -89,7 +89,9 @@ const server = Bun.serve({
         document.getElementById("page-file").files = transfer.files;
       </script>`,
       // Only local image fixtures may load; never fetch real uploads or chat links.
-      { headers: { "Content-Type": "text/html", "Content-Security-Policy": "img-src 'self'" } },
+      {
+        headers: { "Content-Type": "text/html", "Content-Security-Policy": "img-src 'self' blob:" },
+      },
     );
   },
 });
