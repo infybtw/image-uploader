@@ -1,6 +1,7 @@
 import { getPastedImages, serializeImage } from "./clipboard";
 import { findEditor } from "./editor";
 import { createNotice } from "./notice";
+import { findTwitchChatInput } from "./notice-placement";
 import { errorMessage, isAllowedPage, validateImage, type ImagePayload } from "./shared";
 import type { WriteText } from "./copy-button";
 
@@ -23,7 +24,7 @@ export function registerPasteHandler(
         event.stopImmediatePropagation();
         // Keep this synchronous: the browser's normal paste must already be cancelled.
         if (busy) return;
-        const notify = createNotice(writeText);
+        const notify = createNotice(writeText, findTwitchChatInput(editor));
         busy = true;
         void (async () => {
           const urls: string[] = [];
@@ -41,7 +42,7 @@ export function registerPasteHandler(
               stage = `Uploading image ${index + 1}/${files.length}`;
               urls.push(await upload(image));
             }
-            notify("Uploaded. Click the button on the right to copy the link:", urls, true);
+            notify("Uploaded. Copy the link:", urls, true);
           } catch (error) {
             console.error(`[ImageUploader] ${stage}`, error);
             notify(

@@ -3,6 +3,7 @@ import { browser } from "wxt/browser";
 import { serializeImage } from "../../src/clipboard";
 import { errorMessage } from "../../src/shared";
 import { createCopyButton } from "../../src/copy-button";
+import { findTwitchChatInput, mountNotice } from "../../src/notice-placement";
 import type { UploadReply } from "../../src/shared";
 
 // This File was created by a page script, not by the extension's isolated world.
@@ -23,6 +24,80 @@ function test(name: string, run: () => void) {
     results.push({ name, error: error instanceof Error ? error.message : String(error) });
   }
 }
+
+async function check(name: string, run: () => Promise<void>) {
+  try {
+    await run();
+    results.push({ name });
+  } catch (error) {
+    results.push({ name, error: errorMessage(error) });
+  }
+}
+
+function twitchChat() {
+  const chat = document.createElement("div");
+  chat.className = "chat-input";
+  const wrapper = document.createElement("div");
+  const editor = document.createElement("div");
+  editor.contentEditable = "true";
+  editor.textContent = "unsent draft";
+  wrapper.append(editor);
+  chat.append(wrapper);
+  document.body.append(chat);
+  return { chat, editor };
+}
+
+test("inline notices only target a Twitch chat input, not other sites or editors", () => {
+  const { chat, editor } = twitchChat();
+  editor.setAttribute("data-a-target", "chat-input");
+  assert(findTwitchChatInput(editor, "www.twitch.tv") === chat, "Twitch chat not found");
+  assert(findTwitchChatInput(editor, "kick.com") === null, "Kick layout was changed");
+  assert(findTwitchChatInput(editor, "fake-twitch.tv") === null, "lookalike host accepted");
+  assert(findTwitchChatInput(textarea(), "www.twitch.tv") === null, "non-chat field accepted");
+  editor.removeAttribute("data-a-target");
+  chat.className = "";
+  chat.setAttribute("data-a-target", "chat-input");
+  assert(findTwitchChatInput(editor, "twitch.tv") === chat, "data attribute not recognized");
+  chat.removeAttribute("data-a-target");
+  editor.setAttribute("data-a-target", "chat-input");
+  assert(
+    findTwitchChatInput(editor, "twitch.tv") === null,
+    "editor itself accepted as a panel host",
+  );
+});
+
+test("inline notice sits above the chat editor without changing its draft or focus", () => {
+  const { chat, editor } = twitchChat();
+  editor.focus();
+  window.getSelection()!.selectAllChildren(editor);
+  const host = document.createElement("div");
+  const unmount = mountNotice(host, chat);
+  try {
+    assert(chat.firstElementChild === host, "panel was not placed above the editor");
+    assert(!editor.contains(host), "panel was inserted into the editor");
+    assert(host.dataset.placement === "chat", "inline styling not selected");
+    assert(getComputedStyle(host).position === "relative", "panel overlays the chat");
+    assert(editor.textContent === "unsent draft", "draft changed");
+    assert(document.activeElement === editor, "editor lost focus");
+    assert(window.getSelection()!.toString() === "unsent draft", "selection changed");
+  } finally {
+    unmount();
+    host.remove();
+  }
+});
+
+test("unrecognized layouts keep a floating notification", () => {
+  const host = document.createElement("div");
+  const unmount = mountNotice(host, null);
+  try {
+    assert(host.parentElement === document.documentElement, "floating notice not mounted");
+    assert(host.dataset.placement === "floating", "floating styling not selected");
+    assert(getComputedStyle(host).position === "fixed", "floating position lost");
+  } finally {
+    unmount();
+    host.remove();
+  }
+});
 
 function textarea(value = "hello world") {
   const field = document.createElement("textarea");
@@ -178,19 +253,50 @@ async function checkClipboard() {
   } catch (error) {
     results.push({ name: backgroundTest, error: errorMessage(error) });
   }
+  await checkNoticePlacement();
   await checkCopyButtons();
   await fetch("/results", { method: "POST", body: JSON.stringify(results) });
 }
 
-async function checkCopyButtons() {
-  async function check(name: string, run: () => Promise<void>) {
+async function checkNoticePlacement() {
+  const tick = () => new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+  await check("notice survives chat removal and reattaches when Twitch remounts chat", async () => {
+    document.body.replaceChildren();
+    const { chat } = twitchChat();
+    const host = document.createElement("div");
+    host.textContent = "https://twir.app/u/preserved";
+    const unmount = mountNotice(host, chat);
     try {
-      await run();
-      results.push({ name });
-    } catch (error) {
-      results.push({ name, error: errorMessage(error) });
+      chat.remove();
+      const bareEditor = document.createElement("div");
+      bareEditor.contentEditable = "true";
+      bareEditor.setAttribute("data-a-target", "chat-input");
+      document.body.append(bareEditor);
+      await tick();
+      assert(host.isConnected, "links disappeared with the old chat");
+      assert(
+        host.getAttribute("data-placement") === "floating",
+        "missing chat did not use fallback",
+      );
+      assert(!bareEditor.contains(host), "fallback panel was mounted inside a bare editor");
+      const replacement = twitchChat();
+      await tick();
+      assert(replacement.chat.firstElementChild === host, "panel did not reattach");
+      assert(host.getAttribute("data-placement") === "chat", "inline styling not restored");
+      assert(host.textContent === "https://twir.app/u/preserved", "links lost on remount");
+      host.remove();
+      await tick();
+      assert(host.isConnected, "Twitch removing only the panel was not repaired");
+    } finally {
+      unmount();
+      host.remove();
     }
-  }
+    await tick();
+    assert(!host.isConnected, "dismissed panel reappeared");
+  });
+}
+
+async function checkCopyButtons() {
   const tick = () => new Promise<void>((resolve) => window.setTimeout(resolve, 0));
 
   await check(

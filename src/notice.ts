@@ -1,9 +1,8 @@
 import { createCopyButton, type WriteText } from "./copy-button";
+import { mountNotice } from "./notice-placement";
 
-export function createNotice(writeText?: WriteText) {
+export function createNotice(writeText?: WriteText, chatInput: Element | null = null) {
   const host = document.createElement("div");
-  host.style.cssText =
-    "all:initial;position:fixed;top:20px;right:20px;z-index:2147483647;max-width:calc(100vw - 40px)";
   const root = host.attachShadow({ mode: "closed" });
   const style = document.createElement("style");
   style.textContent = `
@@ -24,8 +23,19 @@ export function createNotice(writeText?: WriteText) {
     .copy-button:focus-visible { outline: 2px solid #a78bfa; outline-offset: -2px; }
     .copy-button:disabled { cursor: wait; }
     .copy-button[data-state="copied"] { color: #4ade80; }
+    :host([data-placement="chat"]) .card { width: 100%; max-width: none; padding: 10px;
+      background: var(--color-background-base, #18181b); color: var(--color-text-base, #efeff1);
+      border-color: var(--color-border-base, #53535f); border-radius: 6px; box-shadow: none;
+      font-size: 12px; line-height: 1.4; }
+    :host([data-placement="chat"]) header button { padding: 0 6px; background: transparent; }
+    :host([data-placement="chat"]) p { margin-top: 4px; }
+    :host([data-placement="chat"]) .links { max-height: 180px; overflow-y: auto; }
+    :host([data-placement="chat"]) .link { margin-top: 6px;
+      background: var(--color-background-input, #09090b); }
+    :host([data-placement="chat"]) input { color: var(--color-text-base, #efeff1); }
     @media (prefers-reduced-motion: reduce) { .copy-button { transition: none; } }
   `;
+  let unmount = () => {};
   let dismissTimer: number | undefined;
   let copyButtons: ReturnType<typeof createCopyButton>[] = [];
   const clearCopyButtons = () => {
@@ -35,10 +45,12 @@ export function createNotice(writeText?: WriteText) {
   const dismiss = () => {
     window.clearTimeout(dismissTimer);
     clearCopyButtons();
+    unmount();
     host.remove();
   };
   const card = document.createElement("section");
   card.className = "card";
+  card.setAttribute("aria-label", "ImageUploader");
   const header = document.createElement("header");
   const title = document.createElement("strong");
   title.textContent = "ImageUploader";
@@ -51,14 +63,18 @@ export function createNotice(writeText?: WriteText) {
   const status = document.createElement("p");
   status.setAttribute("role", "status");
   const links = document.createElement("div");
+  links.className = "links";
   card.append(header, status, links);
   root.append(style, card);
-  document.documentElement.append(host);
+  unmount = mountNotice(host, chatInput);
 
   return (message: string, urls: string[] = [], persistent = false) => {
     window.clearTimeout(dismissTimer);
     clearCopyButtons();
-    if (!host.isConnected) document.documentElement.append(host);
+    if (!host.isConnected) {
+      unmount();
+      unmount = mountNotice(host, chatInput);
+    }
     status.textContent = message;
     links.replaceChildren();
     for (const url of urls) {
