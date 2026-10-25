@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "ImageUploader",
+  "name": "image-uploader",
   "version": "0.2.0",
   "description": "Upload clipboard images to Twir on Twitch and Kick. Copy the link from the upload panel. No sign-in required.",
   "host_permissions": ["https://twir.app/*"]
