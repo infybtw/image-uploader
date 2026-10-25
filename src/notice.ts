@@ -2,8 +2,11 @@ import { createCopyButton, type WriteText } from "./copy-button";
 import { mountNotice } from "./notice-placement";
 
 const COPY_DISMISS_DELAY = 3_000;
+let latestNoticeId = 0;
+let dismissActiveNotice: (() => void) | undefined;
 
 export function createNotice(writeText?: WriteText, chatInput: Element | null = null) {
+  const noticeId = ++latestNoticeId;
   const host = document.createElement("div");
   const root = host.attachShadow({ mode: "closed" });
   const style = document.createElement("style");
@@ -13,6 +16,8 @@ export function createNotice(writeText?: WriteText, chatInput: Element | null = 
       box-shadow: 0 8px 32px #0006; font: 14px/1.5 system-ui, sans-serif; }
     header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
     button { color: #fafafa; background: #303036; border: 0; border-radius: 6px; cursor: pointer; padding: 4px 10px; font: inherit; }
+    header button { display: grid; place-items: center; flex-shrink: 0; width: 28px; height: 28px;
+      padding: 0; font-size: 22px; line-height: 1; }
     p { margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
     .link { display: flex; align-items: center; margin-top: 8px; border: 1px solid #555;
       border-radius: 6px; background: #09090b; overflow: hidden; }
@@ -33,7 +38,7 @@ export function createNotice(writeText?: WriteText, chatInput: Element | null = 
       background: var(--color-background-base, #18181b); color: var(--color-text-base, #efeff1);
       border-color: var(--color-border-base, #53535f); border-radius: 6px; box-shadow: none;
       font-size: 12px; line-height: 1.4; }
-    :host([data-placement="chat"]) header button { padding: 0 6px; background: transparent; }
+    :host([data-placement="chat"]) header button { background: transparent; }
     :host([data-placement="chat"]) p { margin-top: 4px; }
     :host([data-placement="chat"]) .links { max-height: 180px; overflow-y: auto; }
     :host([data-placement="chat"]) .link { margin-top: 6px;
@@ -56,13 +61,14 @@ export function createNotice(writeText?: WriteText, chatInput: Element | null = 
     clearCopyButtons();
     unmount();
     host.remove();
+    if (dismissActiveNotice === dismiss) dismissActiveNotice = undefined;
   };
   const card = document.createElement("section");
   card.className = "card";
-  card.setAttribute("aria-label", "ImageUploader");
+  card.setAttribute("aria-label", "Image Uploader");
   const header = document.createElement("header");
   const title = document.createElement("strong");
-  title.textContent = "ImageUploader";
+  title.textContent = "Image Uploader";
   const close = document.createElement("button");
   close.type = "button";
   close.textContent = "×";
@@ -92,11 +98,16 @@ export function createNotice(writeText?: WriteText, chatInput: Element | null = 
   };
   card.append(header, status, links, countdown);
   root.append(style, card);
+  dismissActiveNotice?.();
+  dismissActiveNotice = dismiss;
   unmount = mountNotice(host, chatInput);
 
   return (message: string, urls: string[] = [], persistent = false) => {
+    // Late upload results must not bring back a superseded notification.
+    if (noticeId !== latestNoticeId) return;
     cancelDismiss();
     clearCopyButtons();
+    dismissActiveNotice = dismiss;
     if (!host.isConnected) {
       unmount();
       unmount = mountNotice(host, chatInput);

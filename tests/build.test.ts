@@ -19,7 +19,7 @@ test("both browser builds produce self-contained extension directories", async (
       const manifest = await Bun.file(join(outdir, "manifest.json")).json();
       const background = await Bun.file(join(outdir, "background.js")).text();
       const content = await Bun.file(join(outdir, "content-scripts/content.js")).text();
-      expect(manifest.name).toBe("ImageUploader");
+      expect(manifest.name).toBe(commonManifest.name);
       expect(background).not.toContain("__UPLOAD_TIMEOUT_MS__");
       expect(background).not.toContain("document.");
       expect(background).not.toContain("window.");
