@@ -5,11 +5,11 @@ import chromeSettings from "../extension/chrome.json";
 import { createManifest } from "../scripts/manifest";
 import { SITE_MATCHES } from "../src/shared";
 
-test("extension access is limited to Twitch, Kick and the Twir uploader", () => {
+test("content scripts only run on Twitch/Kick; metadata requests may access HTTP(S) sites", () => {
   expect(manifest.manifest_version).toBe(3);
-  expect(manifest.host_permissions).toEqual(["https://twir.app/*"]);
+  expect(manifest.host_permissions).toEqual(["https://*/*", "http://*/*"]);
   expect(SITE_MATCHES).toEqual(["https://*.twitch.tv/*", "https://*.kick.com/*"]);
-  expect("permissions" in manifest).toBe(false); // No tabs, clipboardRead, cookies, or all_urls.
+  expect("permissions" in manifest).toBe(false); // No tabs, clipboardRead or cookies permissions.
 });
 
 test("the common manifest contains no browser-specific fields", () => {
@@ -51,6 +51,6 @@ test("generated manifests cannot mutate shared data or browser settings", () => 
   firefox.browser_specific_settings.gecko.id = "changed@example.com";
   expect(createManifest("chrome")).toEqual({ ...manifest, ...chromeSettings });
   expect(createManifest("firefox")).toEqual({ ...manifest, ...firefoxSettings });
-  expect(manifest.host_permissions).toEqual(["https://twir.app/*"]);
+  expect(manifest.host_permissions).toEqual(["https://*/*", "http://*/*"]);
   expect(firefoxSettings.browser_specific_settings.gecko.id).toBe("twir-paste@imageuploader.local");
 });

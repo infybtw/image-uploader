@@ -4,10 +4,37 @@ import {
   IMAGE_TYPES,
   MAX_IMAGE_SIZE,
   errorMessage,
+  getChatPreviewUrl,
   getUploaderImageUrl,
   isAllowedPage,
   validateImage,
 } from "../src/shared";
+
+describe("chat preview candidates", () => {
+  for (const value of [
+    "https://images.example.com/photo.png",
+    "https://example.com/image?id=123&signature=abc#frame",
+    "http://example.com:8080/redirect",
+    "https://twir.app/u/AbC123?size=large",
+    "https://example.com/page",
+  ]) {
+    test(`preserves ${value} for browser image detection`, () => {
+      expect(getChatPreviewUrl(value)).toBe(value);
+    });
+  }
+  for (const value of [
+    "javascript:alert(1)",
+    "data:image/png;base64,AA==",
+    "blob:https://example.com/id",
+    "file:///image.png",
+    "ftp://example.com/image.png",
+    "https://user:password@example.com/image",
+    "https://user@example.com/image",
+    "not a URL",
+  ]) {
+    test(`ignores ${value}`, () => expect(getChatPreviewUrl(value)).toBeNull());
+  }
+});
 
 describe("Uploader preview links", () => {
   test("recognizes Uploader IDs and normalizes to HTTPS without query or fragment", () => {

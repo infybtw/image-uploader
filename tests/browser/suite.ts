@@ -7,6 +7,13 @@ import { createNotice } from "../../src/notice";
 import { findChatInput, mountNotice } from "../../src/notice-placement";
 import type { UploadReply } from "../../src/shared";
 import { observeChatPreviews } from "../../src/chat-previews";
+import { checkImageViewer } from "./image-viewer";
+import {
+  createPreviewPageResolver,
+  extractPreviewImage,
+  loadPreviewPage,
+  type PreviewPageReply,
+} from "../../src/preview-page";
 
 // This File was created by a page script, not by the extension's isolated world.
 const pageFile = (document.getElementById("page-file") as HTMLInputElement).files![0]!;
@@ -89,6 +96,63 @@ function previewHost(message: Element) {
   return message.querySelector<HTMLElement>("[data-imageuploader-preview]");
 }
 
+test("PicDrisnya post metadata resolves to its image, not the HTML page", () => {
+  const page = "https://img.hishi.icu/post/nw8nBYytbd";
+  const thumbnail = "https://pic.hishi.icu/media/v2/thumbs/thumb_pdqMFvnQMDqs9JDHDZ.webp";
+  assert(
+    extractPreviewImage(`<meta property="og:image" content="${thumbnail}">`, page) === thumbnail,
+    "reported post thumbnail not extracted",
+  );
+  assert(
+    extractPreviewImage(
+      '<meta content="/photo?size=1&amp;token=abc" property="og:image">',
+      page,
+    ) === "https://img.hishi.icu/photo?size=1&token=abc",
+    "relative URL or HTML entities lost",
+  );
+  assert(
+    extractPreviewImage(
+      '<meta name="twitter:image" content="//pic.hishi.icu/photo.webp">',
+      page,
+    ) === "https://pic.hishi.icu/photo.webp",
+    "Twitter metadata not supported",
+  );
+  assert(
+    extractPreviewImage(
+      '<base href="https://cdn.example/gallery/"><meta property="og:image:url" content="thumb.webp">',
+      page,
+    ) === "https://cdn.example/gallery/thumb.webp",
+    "base URL or alternate Open Graph property ignored",
+  );
+  assert(
+    extractPreviewImage(
+      '<meta name="twitter:image:src" content="/photo.webp">',
+      "http://another.example/post",
+    ) === "http://another.example/photo.webp",
+    "alternate Twitter metadata ignored",
+  );
+  assert(
+    extractPreviewImage(
+      '<meta property="og:image" content="javascript:alert(1)"><meta name="twitter:image" content="https://pic.hishi.icu/safe.webp">',
+      page,
+    ) === "https://pic.hishi.icu/safe.webp",
+    "unsafe metadata not skipped",
+  );
+  assert(
+    extractPreviewImage('<meta property="og:image" content="data:image/png;base64,AA==">', page) ===
+      null,
+    "unsafe image source accepted",
+  );
+  assert(
+    extractPreviewImage(
+      '<img src="/not-metadata"><script>document.body.id="executed"</script>',
+      page,
+    ) === null,
+    "ordinary page images scraped",
+  );
+  assert(document.body.id !== "executed", "fetched script executed");
+});
+
 for (const hostname of ["www.twitch.tv", "kick.com"]) {
   test(`${hostname}: Uploader thumbnail is below the unchanged message link`, () => {
     const { root, message, link } = previewChat(hostname);
@@ -113,9 +177,9 @@ for (const hostname of ["www.twitch.tv", "kick.com"]) {
   });
 }
 
-test("previews ignore other Twir pages, outside-chat links, editors and lookalike sites", () => {
+test("previews ignore unsafe URLs, outside-chat links, editors and lookalike sites", () => {
   const { root, message, link } = previewChat();
-  link.href = "https://twir.app/uploader";
+  link.href = "javascript:alert(1)";
   const outside = document.createElement("a");
   outside.href = "https://twir.app/u/Outside";
   root.append(outside);
@@ -135,17 +199,28 @@ test("previews ignore other Twir pages, outside-chat links, editors and lookalik
   stopUnsupported();
 });
 
-test("duplicate image URLs are collapsed and previews per message are bounded", () => {
+test("duplicate URLs are collapsed and all unique HTTP(S) links are checked", () => {
   const { root, message, link } = previewChat();
-  for (const id of ["AbC123?duplicate=1", "Second", "Third", "Fourth"]) {
+  for (const url of [
+    link.href,
+    "https://example.com/page",
+    "https://images.example.com/photo.png",
+    "https://example.com/image?id=42&signature=abc",
+    "http://example.com/redirect",
+  ]) {
     const other = link.cloneNode(true) as HTMLAnchorElement;
-    other.href = `https://twir.app/u/${id}`;
+    other.href = url;
     message.append(other);
   }
   const stop = observeChatPreviews(root, "twitch.tv");
   try {
-    assert(previewHost(message)?.shadowRoot?.querySelectorAll("img").length === 3, "wrong limit");
-    assert(message.querySelectorAll("a").length === 5, "original links changed");
+    const shadow = previewHost(message)!.shadowRoot!;
+    const images = [...shadow.querySelectorAll("img")];
+    assert(images.length === 5, "unique links skipped or duplicate requested");
+    assert(images[3]!.src === "https://example.com/image?id=42&signature=abc", "query lost");
+    images[1]!.dispatchEvent(new Event("error"));
+    assert(shadow.querySelectorAll("img").length === 4, "non-image link retained");
+    assert(message.querySelectorAll("a").length === 6, "original links changed");
   } finally {
     stop();
   }
@@ -374,7 +449,15 @@ async function checkClipboard() {
   } catch (error) {
     results.push({ name: backgroundTest, error: errorMessage(error) });
   }
+  await check("metadata background requests reject non-allowlisted senders", async () => {
+    const reply: PreviewPageReply = await browser.runtime.sendMessage({
+      type: "preview-page",
+      url: "https://img.hishi.icu/post/nw8nBYytbd",
+    });
+    assert(reply?.page === null, "metadata request bypassed the sender allowlist");
+  });
   await checkChatPreviews();
+  await checkImageViewer(check);
   await checkNoticePlacement();
   await checkCopyButtons();
   await checkNoticeCountdown();
@@ -383,6 +466,226 @@ async function checkClipboard() {
 
 async function checkChatPreviews() {
   const tick = () => new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+  await check(
+    "metadata resolver uses the redirected page URL and shares pending requests",
+    async () => {
+      let requests = 0;
+      const pending = Promise.withResolvers<{ html: string; url: string } | null>();
+      const resolve = createPreviewPageResolver(async () => {
+        requests++;
+        return pending.promise;
+      });
+      const first = resolve("https://short.example/abc");
+      const duplicate = resolve("https://short.example/abc#top");
+      pending.resolve({
+        html: '<meta name="twitter:image" content="thumb.webp">',
+        url: "https://another.example/gallery/post",
+      });
+      assert(
+        (await first) === "https://another.example/gallery/thumb.webp",
+        "relative redirected thumbnail resolved incorrectly",
+      );
+      assert(
+        (await duplicate) === (await first) && requests === 1,
+        "pending requests not deduplicated",
+      );
+    },
+  );
+  for (const path of ["/preview-post", "/preview-post-redirect"]) {
+    await check(
+      `${path}: generic page metadata loads a thumbnail while keeping the original link`,
+      async () => {
+        const { root, message, link } = previewChat();
+        const post = `${location.origin}${path}`;
+        link.href = post;
+        let requests = 0;
+        const resolve = createPreviewPageResolver(async (url) => {
+          requests++;
+          return loadPreviewPage(url);
+        });
+        document.body.append(root);
+        const stop = observeChatPreviews(root, "twitch.tv", resolve);
+        try {
+          const image = previewHost(message)!.shadowRoot!.querySelector("img")!;
+          image.loading = "eager";
+          await new Promise<void>((resolve, reject) => {
+            const timeout = window.setTimeout(
+              () => reject(new Error("metadata image timed out")),
+              5000,
+            );
+            image.addEventListener(
+              "load",
+              () => {
+                window.clearTimeout(timeout);
+                resolve();
+              },
+              { once: true },
+            );
+            image.addEventListener("error", () => {
+              if (image.src === post) return; // HTML triggers the metadata fallback first.
+              window.clearTimeout(timeout);
+              reject(new Error("metadata image failed"));
+            });
+          });
+          assert(
+            image.src === `${location.origin}/preview-image?size=small&token=abc`,
+            "wrong metadata image",
+          );
+          assert(
+            (image.parentElement as HTMLAnchorElement).href === post,
+            "thumbnail no longer opens original post",
+          );
+          assert(link.href === post && link.parentElement === message, "original post changed");
+          (image.parentElement as HTMLAnchorElement).click();
+          const viewer = document.querySelector<HTMLElement>(
+            "[data-imageuploader-viewer]",
+          )!.shadowRoot!;
+          assert(
+            viewer.querySelector("img")!.src === image.src,
+            "chat viewer loads the HTML post instead of its image",
+          );
+          viewer.querySelector<HTMLButtonElement>('[aria-label="Close image preview"]')!.click();
+          await resolve(`${post}#fragment`);
+          assert(requests === 1, "metadata was not cached");
+        } finally {
+          stop();
+          root.remove();
+        }
+      },
+    );
+  }
+  await check(
+    "late metadata cannot restore a preview after a link edit or observer cleanup",
+    async () => {
+      for (const action of ["edit", "stop"] as const) {
+        const { root, message, link } = previewChat();
+        link.href = "https://img.hishi.icu/post/nw8nBYytbd";
+        const pending = Promise.withResolvers<string | null>();
+        const stop = observeChatPreviews(root, "twitch.tv", () => pending.promise);
+        const oldImage = previewHost(message)!.shadowRoot!.querySelector("img")!;
+        const originalSource = oldImage.src;
+        try {
+          oldImage.dispatchEvent(new Event("error"));
+          await tick();
+          if (action === "edit") link.href = "https://example.com/new.png";
+          else stop();
+          await tick();
+          pending.resolve("https://pic.hishi.icu/old.webp");
+          await tick();
+          assert(oldImage.src === originalSource, "stale metadata started loading");
+          if (action === "stop") assert(!previewHost(message), "stopped preview restored");
+          else
+            assert(
+              previewHost(message)?.shadowRoot?.querySelector("img")?.src === link.href,
+              "edited preview replaced",
+            );
+        } finally {
+          stop();
+        }
+      }
+    },
+  );
+  await check(
+    "missing or failed post metadata is cached and leaves only the original link",
+    async () => {
+      for (const html of [null, "<title>No image</title>"]) {
+        const { root, message, link } = previewChat();
+        link.href = "https://img.hishi.icu/post/nw8nBYytbd";
+        let requests = 0;
+        const resolve = createPreviewPageResolver(async () => {
+          requests++;
+          return html === null ? null : { html, url: link.href };
+        });
+        const stop = observeChatPreviews(root, "twitch.tv", resolve);
+        try {
+          previewHost(message)!.shadowRoot!.querySelector("img")!.dispatchEvent(new Event("error"));
+          await tick();
+          assert(!previewHost(message), "empty metadata left a preview");
+          message.prepend(document.createTextNode("updated "));
+          await tick();
+          await resolve(link.href);
+          assert(requests === 1, "failed metadata retried");
+          assert(link.parentElement === message, "original post link removed");
+        } finally {
+          stop();
+        }
+      }
+    },
+  );
+  await check("broken metadata images are removed without a fallback loop", async () => {
+    const { root, message, link } = previewChat();
+    link.href = "https://any.example/article";
+    let requests = 0;
+    const stop = observeChatPreviews(root, "twitch.tv", async () => {
+      requests++;
+      return "https://images.example/broken.webp";
+    });
+    try {
+      const image = previewHost(message)!.shadowRoot!.querySelector("img")!;
+      image.dispatchEvent(new Event("error"));
+      await tick();
+      assert(image.src === "https://images.example/broken.webp", "metadata not applied");
+      image.dispatchEvent(new Event("error"));
+      await tick();
+      assert(!previewHost(message) && requests === 1, "failed metadata was retried");
+      assert(link.parentElement === message, "original link removed");
+    } finally {
+      stop();
+    }
+  });
+  await check(
+    "direct images avoid metadata requests; HTML without image metadata leaves no preview",
+    async () => {
+      const { root, message, link } = previewChat();
+      link.href = `${location.origin}/preview-image?token=abc`;
+      for (const path of ["/preview-redirect", "/preview-page"]) {
+        const other = document.createElement("a");
+        other.href = `${location.origin}${path}`;
+        message.append(other);
+      }
+      document.body.append(root);
+      let requests = 0;
+      const resolve = createPreviewPageResolver(async (url) => {
+        requests++;
+        return loadPreviewPage(url);
+      });
+      const stop = observeChatPreviews(root, "twitch.tv", resolve);
+      try {
+        const shadow = previewHost(message)!.shadowRoot!;
+        const images = [...shadow.querySelectorAll("img")];
+        const loaded = await Promise.all(
+          images.map(
+            (image) =>
+              new Promise<boolean>((resolve, reject) => {
+                const timeout = window.setTimeout(
+                  () => reject(new Error("image load timed out")),
+                  5000,
+                );
+                const finish = (success: boolean) => {
+                  window.clearTimeout(timeout);
+                  resolve(success);
+                };
+                image.addEventListener("load", () => finish(true), { once: true });
+                image.addEventListener("error", () => finish(false), { once: true });
+                image.loading = "eager";
+              }),
+          ),
+        );
+        await resolve(`${location.origin}/preview-page`);
+        await tick();
+        assert(loaded[0] && loaded[1] && !loaded[2], "response type detection failed");
+        assert(requests === 1, "direct images triggered metadata requests");
+        assert(shadow.querySelectorAll("img").length === 2, "HTML response left a preview");
+        assert(message.querySelectorAll("a").length === 3, "original links changed");
+        message.prepend(document.createTextNode("updated "));
+        await tick();
+        assert(previewHost(message)?.shadowRoot === shadow, "failed URL triggered another probe");
+      } finally {
+        stop();
+        root.remove();
+      }
+    },
+  );
   await check(
     "previews follow new messages, edited/deleted links and chat remounts without duplicates",
     async () => {
@@ -398,7 +701,7 @@ async function checkChatPreviews() {
         await tick();
         assert(
           previewHost(message)?.shadowRoot?.querySelector("img")?.src ===
-            "https://twir.app/u/Changed",
+            "http://twir.app/u/Changed?tracking=1#fragment",
           "edited URL ignored",
         );
         link.remove();
@@ -645,6 +948,16 @@ async function checkNoticePreviews(testNotice: TestNoticeFactory) {
             );
           }
           const links = root.querySelector<HTMLElement>(".links")!;
+          images[1]!.src = `${location.origin}/viewer-image`;
+          (images[1]!.parentElement as HTMLAnchorElement).click();
+          const viewer = document.querySelector<HTMLElement>(
+            "[data-imageuploader-viewer]",
+          )!.shadowRoot!;
+          assert(
+            viewer.querySelector("img")!.src === images[1]!.src,
+            "upload preview did not open the image viewer",
+          );
+          viewer.querySelector<HTMLButtonElement>('[aria-label="Close image preview"]')!.click();
           assert(getComputedStyle(links).overflowY === "auto", "multiple uploads cannot scroll");
           images[0]!.dispatchEvent(new Event("error"));
           assert(root.querySelectorAll(".preview").length === 1, "broken preview retained");

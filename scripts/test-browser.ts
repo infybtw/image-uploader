@@ -39,6 +39,42 @@ const server = Bun.serve({
     // Chromium installs unpacked extensions after opening the tab. Hold the page
     // response until installation finishes so its content script is registered.
     await ready.promise;
+    if (path === "/preview-image") {
+      return new Response(
+        Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",
+          "base64",
+        ),
+        { headers: { "Content-Type": "image/png" } },
+      );
+    }
+    if (path === "/viewer-image") {
+      return new Response(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000"><rect width="1600" height="1000" fill="#4c1d95"/><circle cx="800" cy="500" r="320" fill="#a78bfa"/></svg>',
+        {
+          headers: { "Content-Type": "image/svg+xml" },
+        },
+      );
+    }
+    if (path === "/preview-redirect") {
+      return new Response(null, { status: 302, headers: { Location: "/preview-image" } });
+    }
+    if (path === "/preview-page") {
+      return new Response("<!doctype html><title>Not an image</title>", {
+        headers: { "Content-Type": "text/html" },
+      });
+    }
+    if (path === "/preview-post") {
+      return new Response(
+        '<!doctype html><meta property="og:image" content="/preview-image?size=small&amp;token=abc">',
+        {
+          headers: { "Content-Type": "text/html" },
+        },
+      );
+    }
+    if (path === "/preview-post-redirect") {
+      return new Response(null, { status: 302, headers: { Location: "/preview-post" } });
+    }
     if (path !== "/test") {
       return new Response('<!doctype html><script>location.replace("/test")</script>', {
         headers: { "Content-Type": "text/html" },
@@ -52,8 +88,8 @@ const server = Bun.serve({
         transfer.items.add(new File([new Uint8Array([0, 1, 2, 255])], "private-name.png", { type: "image/png" }));
         document.getElementById("page-file").files = transfer.files;
       </script>`,
-      // Preview tests inspect image elements and simulate failures; never fetch real uploads.
-      { headers: { "Content-Type": "text/html", "Content-Security-Policy": "img-src 'none'" } },
+      // Only local image fixtures may load; never fetch real uploads or chat links.
+      { headers: { "Content-Type": "text/html", "Content-Security-Policy": "img-src 'self'" } },
     );
   },
 });

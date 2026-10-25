@@ -1,7 +1,8 @@
-import { getUploaderImageUrl } from "./shared";
+import { getChatPreviewUrl } from "./shared";
+import type { ResolvePreviewPage } from "./preview-page";
+import { bindImageViewer } from "./image-viewer";
 
 const PREVIEW_ATTRIBUTE = "data-imageuploader-preview";
-const MAX_PREVIEWS = 3;
 
 function messageSelector(hostname: string): string | null {
   if (hostname === "twitch.tv" || hostname.endsWith(".twitch.tv")) {
@@ -16,6 +17,7 @@ function messageSelector(hostname: string): string | null {
 export function observeChatPreviews(
   root: Document | HTMLElement = document,
   hostname = location.hostname,
+  resolvePage?: ResolvePreviewPage,
 ): () => void {
   const selector = messageSelector(hostname) ?? "";
   if (!selector) return () => {};
@@ -27,9 +29,8 @@ export function observeChatPreviews(
     const urls = new Set<string>();
     for (const link of message.querySelectorAll<HTMLAnchorElement>("a[href]")) {
       if (link.closest(selector) !== message || link.closest("[contenteditable]")) continue;
-      const url = getUploaderImageUrl(link.href);
+      const url = getChatPreviewUrl(link.href);
       if (url) urls.add(url);
-      if (urls.size === MAX_PREVIEWS) break;
     }
     const key = [...urls].join("\n");
     const previous = states.get(message);
@@ -57,20 +58,45 @@ export function observeChatPreviews(
       link.href = url;
       link.target = "_blank";
       link.rel = "noopener noreferrer";
-      link.title = "Open image on Twir";
       const image = owner.createElement("img");
-      image.alt = "Twir image preview";
+      image.alt = "Image preview";
       image.loading = "lazy";
       image.decoding = "async";
       image.referrerPolicy = "no-referrer";
+      bindImageViewer(link, image);
+      const remove = () => {
+        link.remove();
+        if (!shadow.querySelector("a")) {
+          host.remove();
+          state.host = null; // Do not retry broken links on every chat mutation.
+        }
+      };
+      const current = () =>
+        states.get(message) === state && host.parentElement === message && root.contains(message);
       image.addEventListener(
         "error",
         () => {
-          link.remove();
-          if (!shadow.querySelector("a")) {
-            host.remove();
-            state.host = null; // Do not retry broken links on every chat mutation.
+          if (!current()) return;
+          if (!resolvePage) {
+            remove();
+            return;
           }
+          link.style.display = "none";
+          void Promise.resolve()
+            .then(() => (current() ? resolvePage(url) : null))
+            .then((imageUrl) => {
+              // Edited/deleted messages and stopped observers must not restore old previews.
+              if (!current()) return;
+              const source = imageUrl && getChatPreviewUrl(imageUrl);
+              if (!source || source === url) {
+                remove();
+                return;
+              }
+              image.addEventListener("error", remove, { once: true });
+              link.style.removeProperty("display");
+              image.src = source;
+            })
+            .catch(remove);
         },
         { once: true },
       );
@@ -119,10 +145,14 @@ export function observeChatPreviews(
   };
 }
 
-export function registerChatPreviews() {
+export function registerChatPreviews(resolvePage?: ResolvePreviewPage) {
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", () => observeChatPreviews(), { once: true });
+    document.addEventListener(
+      "DOMContentLoaded",
+      () => observeChatPreviews(document, location.hostname, resolvePage),
+      { once: true },
+    );
   } else {
-    observeChatPreviews();
+    observeChatPreviews(document, location.hostname, resolvePage);
   }
 }

@@ -135,7 +135,7 @@ test("userscript is a self-contained installable bundle without extension runtim
       "// @downloadURL  https://github.com/infybtw/image-uploader/releases/latest/download/imageuploader.user.js",
       "// @match        https://*.twitch.tv/*",
       "// @match        https://*.kick.com/*",
-      "// @connect      twir.app",
+      "// @connect      *",
       "// @grant        GM_xmlhttpRequest",
       "// @grant        GM.setClipboard",
       "// @sandbox      DOM",

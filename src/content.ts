@@ -5,15 +5,17 @@ import { findChatInput } from "./notice-placement";
 import { errorMessage, isAllowedPage, validateImage, type ImagePayload } from "./shared";
 import type { WriteText } from "./copy-button";
 import { registerChatPreviews } from "./chat-previews";
+import type { ResolvePreviewPage } from "./preview-page";
 
 export function registerPasteHandler(
   upload: (image: ImagePayload) => Promise<string>,
   writeText?: WriteText,
+  resolvePage?: ResolvePreviewPage,
 ) {
   let busy = false;
 
   if (isAllowedPage(location.href)) {
-    registerChatPreviews();
+    registerChatPreviews(resolvePage);
     document.addEventListener(
       "paste",
       (event) => {

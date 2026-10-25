@@ -23,6 +23,17 @@ export interface UploadMessage {
 
 export type UploadReply = { ok: true; url: string } | { ok: false; error: string };
 
+// Image responses can come from any HTTP(S) URL, including extensionless endpoints.
+export function getChatPreviewUrl(value: string): string | null {
+  try {
+    const url = new URL(value);
+    if (!["https:", "http:"].includes(url.protocol) || url.username || url.password) return null;
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
 // Only Uploader files, never Twir pages, short links, or API endpoints.
 export function getUploaderImageUrl(value: string): string | null {
   try {

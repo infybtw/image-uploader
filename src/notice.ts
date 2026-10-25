@@ -1,6 +1,7 @@
 import { createCopyButton, type WriteText } from "./copy-button";
 import { mountNotice } from "./notice-placement";
 import { getUploaderImageUrl } from "./shared";
+import { bindImageViewer } from "./image-viewer";
 
 const COPY_DISMISS_DELAY = 3_000;
 let latestNoticeId = 0;
@@ -130,12 +131,12 @@ export function createNotice(writeText?: WriteText, chatInput: Element | null = 
         preview.href = imageUrl;
         preview.target = "_blank";
         preview.rel = "noopener noreferrer";
-        preview.title = "Open image on Twir";
         const image = document.createElement("img");
         image.alt = "Uploaded image preview";
         image.loading = "lazy";
         image.decoding = "async";
         image.referrerPolicy = "no-referrer";
+        bindImageViewer(preview, image);
         image.addEventListener("error", () => preview.remove(), { once: true });
         image.src = imageUrl;
         preview.append(image);
