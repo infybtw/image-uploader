@@ -133,6 +133,32 @@ export async function checkImageViewer(check: Check) {
   );
 
   await check(
+    "chat preview links keep normal navigation when configured to open the website",
+    async () => {
+      const anchor = document.createElement("a");
+      anchor.href = "#site-navigation";
+      const thumbnail = document.createElement("img");
+      anchor.append(thumbnail);
+      document.body.append(anchor);
+      bindImageViewer(anchor, thumbnail, () => "site");
+      try {
+        const click = new MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+          button: 0,
+        });
+        assert(anchor.dispatchEvent(click), "site mode canceled normal link navigation");
+        assert(
+          !document.querySelector("[data-imageuploader-viewer]"),
+          "site mode opened the image viewer",
+        );
+      } finally {
+        anchor.remove();
+      }
+    },
+  );
+
+  await check(
     "viewer zooms with buttons, wheel and keyboard; zoom stays between fit and 800%",
     async () => {
       const close = openImageViewer(source);

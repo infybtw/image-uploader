@@ -7,6 +7,12 @@ import { createNotice } from "../../src/notice";
 import { findChatInput, mountNotice } from "../../src/notice-placement";
 import type { UploadReply } from "../../src/shared";
 import { observeChatPreviews } from "../../src/chat-previews";
+import { createSettings, type Settings } from "../../src/settings";
+import {
+  registerSettingsUi,
+  SETTINGS_BUTTON_ATTRIBUTE,
+  SETTINGS_PANEL_ATTRIBUTE,
+} from "../../src/settings-ui";
 import { checkImageViewer } from "./image-viewer";
 import { checkImageEditor, editorFixture } from "./image-editor";
 import {
@@ -353,6 +359,56 @@ test("contenteditable: inserts plain text into nested markup and emits input", (
   assert(input, "input event was not emitted");
 });
 
+test("rich editors insert through beforeinput instead of execCommand", () => {
+  const field = document.createElement("div");
+  field.contentEditable = "true";
+  field.setAttribute("data-slate-editor", "true");
+  field.textContent = "draft";
+  document.body.append(field);
+  field.focus();
+  const range = document.createRange();
+  range.selectNodeContents(field);
+  range.collapse(false);
+  window.getSelection()!.removeAllRanges();
+  window.getSelection()!.addRange(range);
+  let inserted = "";
+  field.addEventListener("beforeinput", (event) => {
+    const input = event as InputEvent;
+    if (input.inputType !== "insertText") return;
+    inserted += input.data ?? "";
+    field.textContent = `draft${inserted}`;
+    event.preventDefault();
+  });
+  try {
+    const point = captureInsertionPoint(field);
+    assert(point.insert("https://twir.app/u/test"), "editor insertion rejected");
+    assert(inserted === "https://twir.app/u/test", "beforeinput did not carry the link");
+    assert(field.textContent === "drafthttps://twir.app/u/test", "editor state not updated");
+  } finally {
+    field.remove();
+  }
+});
+
+test("stateful editors never receive DOM-only fallback edits", () => {
+  const field = document.createElement("div");
+  field.contentEditable = "true";
+  field.setAttribute("data-lexical-editor", "true");
+  field.textContent = "draft";
+  document.body.append(field);
+  field.focus();
+  const range = document.createRange();
+  range.selectNodeContents(field);
+  range.collapse(false);
+  window.getSelection()!.removeAllRanges();
+  window.getSelection()!.addRange(range);
+  try {
+    assert(!captureInsertionPoint(field).insert("LINK"), "DOM-only edit was accepted");
+    assert(field.textContent === "draft", "stateful editor DOM was changed");
+  } finally {
+    field.remove();
+  }
+});
+
 test("draft edited while uploading is not overwritten", () => {
   const field = textarea();
   const point = captureInsertionPoint(field);
@@ -463,6 +519,7 @@ async function checkClipboard() {
   await checkNoticePlacement();
   await checkCopyButtons();
   await checkNoticeCountdown();
+  await checkSettings();
   await fetch("/results", { method: "POST", body: JSON.stringify(results) });
 }
 
@@ -1095,6 +1152,30 @@ async function checkNoticeCountdown() {
     );
 
     await check(
+      "automatic insertion countdown dismisses the notice after three seconds",
+      async () => {
+        try {
+          notify(
+            "Uploaded and inserted into chat. Copy the link:",
+            ["https://twir.app/u/test"],
+            true,
+            3_000,
+          );
+          const countdown = root.querySelector<HTMLElement>(".countdown")!;
+          assert(!countdown.hidden, "automatic insertion countdown missing");
+          assert(
+            getComputedStyle(countdown.firstElementChild!).animationDuration === "3s",
+            "wrong automatic insertion countdown duration",
+          );
+          await waitForDismiss();
+          assert(!host.isConnected, "automatic insertion notice did not close");
+        } finally {
+          root.querySelector<HTMLButtonElement>("header button")!.click();
+        }
+      },
+    );
+
+    await check(
       "failed retry cancels an active countdown and leaves the notice visible",
       async () => {
         let fail = false;
@@ -1262,6 +1343,109 @@ async function checkNoticeCountdown() {
         }
       },
     );
+  });
+}
+
+async function checkSettings() {
+  await check(
+    "Twitch: settings button sits next to the account menu and toggles saved features",
+    async () => {
+      const saved: Settings[] = [];
+      const settings = createSettings({
+        load: () => ({}),
+        save: (value) => saved.push(value),
+      });
+      await settings.ready;
+      const nav = document.createElement("nav");
+      nav.innerHTML =
+        '<div class="header-right"><div data-a-target="dropdown-down"><button data-a-target="user-menu-toggle">Account</button></div></div>';
+      document.body.append(nav);
+      const stop = registerSettingsUi(settings, "www.twitch.tv");
+      try {
+        const host = document.querySelector<HTMLElement>(`[${SETTINGS_BUTTON_ATTRIBUTE}]`);
+        assert(host?.shadowRoot, "settings button missing from the Twitch navigation");
+        const account = nav.querySelector('[data-a-target="dropdown-down"]')!;
+        assert(
+          host.nextElementSibling === account,
+          "settings button is not next to the account control",
+        );
+        assert(
+          host.parentElement === account.parentElement,
+          "settings button is in the wrong group",
+        );
+        assert(host.getAttribute(SETTINGS_BUTTON_ATTRIBUTE) === "twitch", "wrong site styling");
+
+        const button = host.shadowRoot!.querySelector<HTMLButtonElement>("button")!;
+        button.click();
+        const panel = document.querySelector<HTMLElement>(`[${SETTINGS_PANEL_ATTRIBUTE}]`);
+        assert(panel?.shadowRoot, "settings panel did not open");
+        const root = panel.shadowRoot!;
+        const switches = root.querySelectorAll<HTMLInputElement>(".switch");
+        assert(switches.length === 2, "settings switches missing");
+        assert(switches[0]!.checked && !switches[1]!.checked, "wrong default settings");
+        switches[0]!.click();
+        assert(!settings.get().chatPreviews, "chat preview setting was not applied");
+        switches[1]!.click();
+        assert(settings.get().autoInsert, "automatic insertion setting was not applied");
+        const radios = [...root.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
+        assert(
+          radios.length === 2 && radios[0]!.checked && !radios[1]!.checked,
+          "wrong preview click mode",
+        );
+        radios[1]!.click();
+        assert(settings.get().previewClick === "site", "preview click mode was not applied");
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+        assert(
+          saved.at(-1)?.chatPreviews === false &&
+            saved.at(-1)?.autoInsert === true &&
+            saved.at(-1)?.previewClick === "site",
+          "settings were not persisted",
+        );
+
+        document.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+        );
+        assert(!panel.isConnected, "Escape did not close the settings panel");
+        assert(
+          button.getAttribute("aria-expanded") === "false",
+          "settings button state was not reset",
+        );
+
+        button.click();
+        const reopened = document.querySelector<HTMLElement>(`[${SETTINGS_PANEL_ATTRIBUTE}]`);
+        assert(reopened?.isConnected, "settings panel did not reopen");
+        document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+        assert(!reopened.isConnected, "outside click did not close the settings panel");
+      } finally {
+        stop();
+        nav.remove();
+      }
+    },
+  );
+
+  await check("Kick: settings button is inserted before Get KICKs", async () => {
+    const settings = createSettings({ load: () => ({}), save: () => {} });
+    await settings.ready;
+    const nav = document.createElement("nav");
+    nav.innerHTML = '<div class="right"><button>Get KICKs</button><button>Avatar</button></div>';
+    document.body.append(nav);
+    const stop = registerSettingsUi(settings, "kick.com");
+    try {
+      const host = document.querySelector<HTMLElement>(`[${SETTINGS_BUTTON_ATTRIBUTE}]`);
+      assert(host?.shadowRoot, "settings button missing from the Kick header");
+      assert(host.getAttribute(SETTINGS_BUTTON_ATTRIBUTE) === "kick", "wrong site styling");
+      const getKicks = [...nav.querySelectorAll("button")].find(
+        (element) => element.textContent === "Get KICKs",
+      )!;
+      assert(host.nextElementSibling === getKicks, "settings button is not before Get KICKs");
+      assert(
+        host.parentElement === getKicks.parentElement,
+        "settings button is in the wrong group",
+      );
+    } finally {
+      stop();
+      nav.remove();
+    }
   });
 }
 

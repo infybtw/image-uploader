@@ -1,6 +1,7 @@
 import { getChatPreviewUrl } from "./shared";
 import type { ResolvePreviewPage } from "./preview-page";
 import { bindImageViewer } from "./image-viewer";
+import type { PreviewClick } from "./settings";
 
 const PREVIEW_ATTRIBUTE = "data-imageuploader-preview";
 
@@ -18,6 +19,7 @@ export function observeChatPreviews(
   root: Document | HTMLElement = document,
   hostname = location.hostname,
   resolvePage?: ResolvePreviewPage,
+  getClickAction?: () => PreviewClick,
 ): () => void {
   const selector = messageSelector(hostname) ?? "";
   if (!selector) return () => {};
@@ -63,7 +65,7 @@ export function observeChatPreviews(
       image.loading = "lazy";
       image.decoding = "async";
       image.referrerPolicy = "no-referrer";
-      bindImageViewer(link, image);
+      bindImageViewer(link, image, getClickAction);
       const remove = () => {
         link.remove();
         if (!shadow.querySelector("a")) {
@@ -145,14 +147,34 @@ export function observeChatPreviews(
   };
 }
 
-export function registerChatPreviews(resolvePage?: ResolvePreviewPage) {
+export function registerChatPreviews(
+  resolvePage?: ResolvePreviewPage,
+  getClickAction?: () => PreviewClick,
+) {
+  let enabled = true;
+  let mounted = false;
+  let stop: (() => void) | undefined;
+  const start = () => {
+    mounted = true;
+    if (enabled && !stop) {
+      stop = observeChatPreviews(document, location.hostname, resolvePage, getClickAction);
+    }
+  };
   if (document.readyState === "loading") {
-    document.addEventListener(
-      "DOMContentLoaded",
-      () => observeChatPreviews(document, location.hostname, resolvePage),
-      { once: true },
-    );
+    document.addEventListener("DOMContentLoaded", start, { once: true });
   } else {
-    observeChatPreviews(document, location.hostname, resolvePage);
+    start();
   }
+  return {
+    setEnabled(value: boolean) {
+      enabled = value;
+      if (!mounted) return;
+      if (enabled && !stop) {
+        stop = observeChatPreviews(document, location.hostname, resolvePage, getClickAction);
+      } else if (!enabled && stop) {
+        stop();
+        stop = undefined;
+      }
+    },
+  };
 }

@@ -138,6 +138,8 @@ test("userscript is a self-contained installable bundle without extension runtim
       "// @connect      *",
       "// @grant        GM_xmlhttpRequest",
       "// @grant        GM.setClipboard",
+      "// @grant        GM_getValue",
+      "// @grant        GM_setValue",
       "// @sandbox      DOM",
       "// @run-at       document-start",
       "// ==/UserScript==",
@@ -147,8 +149,8 @@ test("userscript is a self-contained installable bundle without extension runtim
     const metadata = await Bun.file(join(directory, "imageuploader.meta.js")).text();
     expect(metadata).toBe(`${script.split("// ==/UserScript==")[0]}// ==/UserScript==\n`);
     expect(script).not.toMatch(/chrome\.runtime|browser\.runtime|__UPLOAD_TIMEOUT_MS__/);
-    expect(script).not.toContain("execCommand");
-    expect(script).not.toContain("captureInsertionPoint");
+    expect(script).toContain("insertText");
+    expect(script).toContain("Preview links in chat");
     expect(script).not.toContain("@require");
     expect(script).not.toMatch(/^\s*(?:import|export)\s/m);
 

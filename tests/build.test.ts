@@ -23,8 +23,8 @@ test("both browser builds produce self-contained extension directories", async (
       expect(background).not.toContain("__UPLOAD_TIMEOUT_MS__");
       expect(background).not.toContain("document.");
       expect(background).not.toContain("window.");
-      expect(content).not.toContain("execCommand");
-      expect(content).not.toContain("captureInsertionPoint");
+      expect(content).toContain("insertText");
+      expect(content).toContain("Preview links in chat");
       if (target === "firefox") {
         expect(manifest).toMatchObject({ ...commonManifest, ...firefoxSettings });
         expect(manifest.background).toEqual({ scripts: ["background.js"] });

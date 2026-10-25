@@ -3,5 +3,6 @@
   "name": "image-uploader",
   "version": "0.5.0",
   "description": "Upload clipboard images to Twir on Twitch and Kick. Copy the link from the upload panel. No sign-in required.",
+  "permissions": ["storage"],
   "host_permissions": ["https://*/*", "http://*/*"]
 }

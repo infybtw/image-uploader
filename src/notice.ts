@@ -103,21 +103,23 @@ export function createNotice(
     countdown.hidden = true;
     countdown.replaceChildren();
   };
-  const dismissAfterCopy = () => {
+  const dismissAfter = (delayMs: number) => {
     cancelDismiss();
     const bar = document.createElement("div");
     bar.className = "countdown-bar";
+    bar.style.animationDuration = `${delayMs}ms`;
     countdown.append(bar);
     countdown.hidden = false;
-    dismissTimer = window.setTimeout(dismiss, COPY_DISMISS_DELAY);
+    dismissTimer = window.setTimeout(dismiss, delayMs);
   };
+  const dismissAfterCopy = () => dismissAfter(COPY_DISMISS_DELAY);
   card.append(header, status, links, countdown);
   root.append(style, card);
   dismissActiveNotice?.();
   dismissActiveNotice = dismiss;
   unmount = mountNotice(host, chatInput);
 
-  const notify = (message: string, urls: string[] = [], persistent = false) => {
+  const notify = (message: string, urls: string[] = [], persistent = false, dismissIn?: number) => {
     // Late upload results must not bring back a superseded notification.
     if (noticeId !== latestNoticeId) return;
     cancelDismiss();
@@ -203,7 +205,8 @@ export function createNotice(
       upload.append(row);
       links.append(upload);
     }
-    if (!persistent) dismissTimer = window.setTimeout(dismiss, 8_000);
+    if (dismissIn) dismissAfter(dismissIn);
+    else if (!persistent) dismissTimer = window.setTimeout(dismiss, 8_000);
   };
   return notify;
 }

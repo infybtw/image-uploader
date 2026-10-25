@@ -414,12 +414,17 @@ export function openImageViewer(
   return close;
 }
 
-export function bindImageViewer(preview: HTMLAnchorElement, image: HTMLImageElement) {
-  preview.title = "Enlarge image";
-  preview.setAttribute("aria-haspopup", "dialog");
+export function bindImageViewer(
+  preview: HTMLAnchorElement,
+  image: HTMLImageElement,
+  getClickAction?: () => "viewer" | "site",
+) {
+  preview.title = "Image preview";
+  if (!getClickAction) preview.setAttribute("aria-haspopup", "dialog");
   preview.addEventListener("click", (event) => {
     if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey)
       return;
+    if (getClickAction?.() === "site") return;
     event.preventDefault();
     event.stopPropagation();
     if (image.getAttribute("src"))

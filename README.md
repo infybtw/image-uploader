@@ -1,6 +1,6 @@
 # ImageUploader
 
-Upload clipboard images on **twitch.tv** and **kick.com**, including subdomains. Available as a Firefox/Chrome extension or a **Tampermonkey userscript**. Images are uploaded anonymously to [Twir Uploader](https://twir.app/uploader), and their links appear in a panel with a copy button above the Twitch or Kick chat input. Unrecognized chat layouts use a floating notification. Neither version **inserts links into chat or sends messages**.
+Upload clipboard images on **twitch.tv** and **kick.com**, including subdomains. Available as a Firefox/Chrome extension or a **Tampermonkey userscript**. Images are uploaded anonymously to [Twir Uploader](https://twir.app/uploader), and their links appear in a panel with a copy button above the Twitch or Kick chat input. Unrecognized chat layouts use a floating notification. Automatic link insertion is off by default; neither version sends messages for you.
 
 The project uses **WXT** to generate browser manifests, build entrypoints, and package extensions. **Bun 1.4.4** runs the tooling, tests, native type checker, and formatter, and bundles the standalone userscript. There are no `dev:*` commands or direct `web-ext` dependency; load the built extension or userscript manually.
 
@@ -40,7 +40,7 @@ Both targets use Manifest V3. WXT generates a background script for Firefox and 
 3. Alternatively, build with `bun run build:userscript` (also included in `bun run build`), create a new script in the Tampermonkey dashboard, replace the template with the **entire contents** of `dist/imageuploader.user.js`, and save it with **Ctrl+S**.
 4. Allow connections to `twir.app` for uploads and to linked websites for metadata previews if prompted, then reload Twitch/Kick tabs. The script declares `@connect *` for these requests.
 
-Use either the extension or the userscript on a site, not both at once. The userscript has the same paste handling, image limits, notifications, and animated copy button. It uses Tampermonkey's anonymous background request API for uploads and `GM.setClipboard` only when you click copy. Its upload timeout is **60 seconds** in both browsers. All dependencies are bundled; no external `@require` scripts are loaded.
+Use either the extension or the userscript on a site, not both at once. The userscript has the same paste handling, settings, image limits, notifications, and animated copy button. It uses Tampermonkey's anonymous background request API for uploads and `GM.setClipboard` only when you click copy. Its upload timeout is **60 seconds** in both browsers. All dependencies are bundled; no external `@require` scripts are loaded.
 
 The script includes `@updateURL` and `@downloadURL` pointing to the latest GitHub Release. With update checks enabled in Tampermonkey, it checks the small `imageuploader.meta.js` file and downloads `imageuploader.user.js` when `@version` increases. Previously installed scripts without these URLs need to be reinstalled or replaced once. Updates follow published stable releases, not branch builds; no update is available before the first release. Forks should change the repository URL in `scripts/build-userscript.ts` before distribution.
 
@@ -52,9 +52,19 @@ The script includes `@updateURL` and `@downloadURL` pointing to the latest GitHu
 
 Context-menu paste and other system paste shortcuts also work: the extension handles the `paste` event. Normal text pastes are unchanged. Password fields, disabled inputs, and pastes outside an editor are ignored.
 
-The panel stays visible until you close it or successfully copy a link. It is embedded in Twitch and Kick without covering chat messages, uses the site's theme colors, and reattaches if the site replaces the chat input. If the chat input disappears or its layout is not recognized, a floating notification keeps the links available. Chat content and caret position are unchanged; the clipboard is overwritten only when you click the copy button. After a successful copy, the panel shows a three-second countdown and closes; copying again restarts the countdown. The Morphicons/Lucide icon morphs into a green checkmark and changes back after 2 seconds. The animation respects reduced-motion preferences.
+The panel stays visible until you close it or successfully copy a link. It is embedded in Twitch and Kick without covering chat messages, uses the site's theme colors, and reattaches if the site replaces the chat input. If the chat input disappears or its layout is not recognized, a floating notification keeps the links available. Chat content and caret position are unchanged; the clipboard is overwritten only when you click the copy button. After a successful copy, the panel shows a three-second countdown and closes; copying again restarts the countdown. With automatic insertion enabled and successful, the uploaded link is added to the unsent chat message and the panel closes after three seconds. The Morphicons/Lucide icon morphs into a green checkmark and changes back after 2 seconds. The animation respects reduced-motion preferences.
 
 Each uploaded link also has a clickable image preview above its copy row, in both the inline panel and floating notification. Clicking an upload thumbnail opens a full-screen image editor overlay; failed previews disappear without affecting the link or copy button. Multiple uploads scroll within the panel.
+
+### Settings
+
+Click the gear button next to the account controls in the Twitch top navigation or next to **Get KICKs** in the Kick header. The panel has three options:
+
+- **Preview links in chat** — show thumbnails below chat messages. Turning it off removes existing previews and stops image/metadata requests for chat links.
+- **Insert the link into chat automatically** — after a successful upload, add the link to the unsent chat message at the caret where you pasted. When insertion succeeds, the upload panel closes after a three-second countdown. This is off by default and never sends the message. If the draft changed, a different field has focus, or the page navigated during the upload, the link is not inserted and the panel stays open.
+- **Clicking a chat preview** — **Open viewer** (default) enlarges the image on the page; **Open website** keeps the normal link behavior and opens the linked page in a new tab. Modifier-clicks always retain normal link behavior.
+
+Settings are shared across Twitch and Kick by the extension. The userscript stores them in Tampermonkey storage (`GM_getValue`/`GM_setValue`), which is also shared across sites; if that API is unavailable it falls back to the current site's local storage. No setting is uploaded anywhere.
 
 ### Image editor
 
@@ -68,7 +78,7 @@ Multiple images upload sequentially. Failed uploads are not retried automaticall
 
 Both the extension and userscript show clickable thumbnails below messages containing HTTP/HTTPS links that return images in Twitch and Kick chat, not just Twir Uploader links. No image file extension is required; redirects to images also work. If a link does not load as an image, its HTML is checked for Open Graph or Twitter image metadata (`og:image`, `og:image:secure_url`, `og:image:url`, `twitter:image`, or `twitter:image:src`). This works across websites, including PicDrisnya posts, without a domain allowlist. This is a local feature: other viewers need the extension or userscript to see previews. Original message links stay unchanged.
 
-Metadata is fetched anonymously without a referrer, following redirects, with an eight-second timeout and a 512 KiB HTML size limit. Relative image URLs are resolved against the final page URL (or its HTML base URL). Successful and failed metadata lookups are cached locally in memory to avoid repeated requests. Clicking a thumbnail opens the resolved image in the on-page viewer, not the linked website. Page scripts are never executed: pages that supply metadata only after running JavaScript, require authentication, or block requests may not produce previews. The extension needs HTTP/HTTPS host permissions and the userscript needs `@connect *`; content scripts still run only on Twitch/Kick.
+Metadata is fetched anonymously without a referrer, following redirects, with an eight-second timeout and a 512 KiB HTML size limit. Relative image URLs are resolved against the final page URL (or its HTML base URL). Successful and failed metadata lookups are cached locally in memory to avoid repeated requests. By default, clicking a thumbnail opens the resolved image in the on-page viewer, not the linked website. The gear menu can switch clicks to normal website navigation, and can disable chat previews entirely. Page scripts are never executed: pages that supply metadata only after running JavaScript, require authentication, or block requests may not produce previews. The extension needs HTTP/HTTPS host permissions and the userscript needs `@connect *`; content scripts still run only on Twitch/Kick.
 
 Previews work for existing and newly arriving messages, including after chat navigation/remounting. Images load lazily, with one preview per unique URL and no per-message limit. Pages without image metadata, failed or deleted images, and images blocked by the site's security policy leave only the original link. Unrecognized chat layouts are left unchanged.
 
@@ -132,7 +142,7 @@ Tag/version mismatches and prerelease tags fail before publishing. Published rel
 
 ## Manifest configuration
 
-- `extension/manifest.json`: shared name, version, description, and host permissions.
+- `extension/manifest.json`: shared name, version, description, storage permission, and host permissions.
 - `extension/firefox.json`: Firefox ID, minimum versions, and data-transmission declaration.
 - `extension/chrome.json`: Chrome minimum version.
 - `scripts/manifest.ts`: combines shared metadata with browser-specific settings.
@@ -241,7 +251,7 @@ The test runner directly launches an isolated temporary browser profile and inst
 
 Pasting an image **immediately uploads it to the third-party service Twir**, where it becomes accessible via a public link. Do not paste confidential images. Closing a notification or undoing chat text does not delete the upload. Retention/deletion policies belong to [Twir](https://twir.app/privacy); anonymous upload management is not implemented.
 
-Both versions read images only from a trusted paste event in an editable field. They do not poll the clipboard, read browsing history, or store uploads. Filenames become `pasted-image.<format>`; image bytes and metadata are unchanged. Cookies, page URLs, and chat text are not sent to the API. There is no telemetry. Transmission of pasted images is declared by the Firefox extension as `personalCommunications`.
+Both versions read images only from a trusted paste event in an editable field. They do not poll the clipboard, read browsing history, or store uploads. Filenames become `pasted-image.<format>`; image bytes and metadata are unchanged. Cookies, page URLs, and chat text are not sent to the API. There is no telemetry. Transmission of pasted images is declared by the Firefox extension as `personalCommunications`. Feature settings are stored locally and are never transmitted.
 
 Chat previews also inspect links inside rendered chat messages locally. Checking chat links makes normal browser image requests to their destinations (including redirects), even when the response is not an image. Upload-panel previews request images from Twir. These requests reveal your IP address and requested URL to the destination; cookies follow the browser's usual third-party cookie policy. They omit the page referrer. No chat text is uploaded or stored.
 

@@ -18,6 +18,8 @@ export async function buildUserscript(outdir = "dist") {
     "// @connect      *",
     "// @grant        GM_xmlhttpRequest",
     "// @grant        GM.setClipboard",
+    "// @grant        GM_getValue",
+    "// @grant        GM_setValue",
     "// @sandbox      DOM",
     "// @run-at       document-start",
     "// ==/UserScript==",

@@ -4,12 +4,16 @@ import { SITE_MATCHES } from "../shared";
 import { browser } from "wxt/browser";
 import type { UploadMessage, UploadReply } from "../shared";
 import { createPreviewPageResolver, type PreviewPageReply } from "../preview-page";
+import { createSettings } from "../settings";
+import { createExtensionSettingsStore, watchExtensionSettings } from "../extension-settings";
 
 export default defineContentScript({
   matches: SITE_MATCHES,
   runAt: "document_start",
   allFrames: true,
   main() {
+    const settings = createSettings(createExtensionSettingsStore());
+    watchExtensionSettings(settings);
     registerPasteHandler(
       async (image) => {
         const message: UploadMessage = { type: "upload-image", image };
@@ -27,6 +31,7 @@ export default defineContentScript({
         });
         return reply?.page ?? null;
       }),
+      settings,
     );
   },
 });

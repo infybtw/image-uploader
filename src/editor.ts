@@ -1,6 +1,28 @@
 type TextField = HTMLInputElement | HTMLTextAreaElement;
 export type Editor = TextField | HTMLElement;
 
+// Slate and Lexical keep their source of truth outside the DOM. Changing only the
+// DOM lets the next editor reconciliation duplicate or erase the text. A synthetic
+// beforeinput is handled by both editors and works from an isolated extension world.
+function insertRichText(target: HTMLElement, text: string): boolean {
+  return !target.dispatchEvent(
+    new InputEvent("beforeinput", {
+      inputType: "insertText",
+      data: text,
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+    }),
+  );
+}
+
+function isStatefulEditor(element: HTMLElement): boolean {
+  return (
+    element.matches('[data-lexical-editor="true"], [data-slate-editor="true"]') ||
+    Boolean(element.querySelector('[data-lexical-editor="true"], [data-slate-editor="true"]'))
+  );
+}
+
 function isTextField(element: HTMLElement): element is TextField {
   return element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement;
 }
@@ -64,6 +86,13 @@ export function captureInsertionPoint(editor: Editor): InsertionPoint {
         if (!range || !selection || !editor.contains(range.commonAncestorContainer)) return false;
         selection.removeAllRanges();
         selection.addRange(range);
+        const target =
+          document.activeElement instanceof HTMLElement && editor.contains(document.activeElement)
+            ? document.activeElement
+            : editor;
+        if (insertRichText(target, text)) return true;
+        // Never fall back to a DOM-only edit in an editor with external state.
+        if (isStatefulEditor(editor)) return false;
       }
       // Native editing updates Slate/Lexical/React and preserves the undo stack.
       if (document.execCommand("insertText", false, text)) return true;

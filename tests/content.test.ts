@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-test("production content script does not include automatic editor insertion", async () => {
+test("content script includes automatic link insertion and no Cyrillic UI copy", async () => {
   const build = await Bun.build({
     entrypoints: [new URL("../src/content.ts", import.meta.url).pathname],
     target: "browser",
@@ -8,8 +8,9 @@ test("production content script does not include automatic editor insertion", as
   });
   expect(build.success).toBe(true);
   const script = await build.outputs[0]!.text();
-  expect(script).not.toContain("captureInsertionPoint");
-  expect(script).not.toContain("execCommand");
-  expect(script).not.toContain("setSelectionRange");
+  expect(script).toContain("captureInsertionPoint");
+  expect(script).toContain('execCommand("insertText"');
+  expect(script).toContain("setSelectionRange");
+  expect(script).toContain("Preview links in chat");
   expect(script).not.toMatch(/\p{Script=Cyrillic}/u);
 });
