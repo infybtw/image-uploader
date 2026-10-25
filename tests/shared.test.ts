@@ -4,9 +4,41 @@ import {
   IMAGE_TYPES,
   MAX_IMAGE_SIZE,
   errorMessage,
+  getUploaderImageUrl,
   isAllowedPage,
   validateImage,
 } from "../src/shared";
+
+describe("Uploader preview links", () => {
+  test("recognizes Uploader IDs and normalizes to HTTPS without query or fragment", () => {
+    expect(getUploaderImageUrl("https://twir.app/u/AbC_123-xyz")).toBe(
+      "https://twir.app/u/AbC_123-xyz",
+    );
+    expect(getUploaderImageUrl("http://twir.app/u/AbC123?tracking=1#hash")).toBe(
+      "https://twir.app/u/AbC123",
+    );
+  });
+  for (const value of [
+    "https://twir.app/",
+    "https://twir.app/uploader",
+    "https://twir.app/h/AbC123",
+    "https://twir.app/s/AbC123",
+    "https://twir.app/api/v1/uploader/files/delete?id=AbC123",
+    "https://twir.app/u/",
+    "https://twir.app/u/AbC123/other",
+    "https://twir.app/u/AbC123.png",
+    "https://twir.app/u/%22onerror=alert(1)",
+    "https://twir.app.evil.com/u/AbC123",
+    "https://www.twir.app/u/AbC123",
+    "https://user:password@twir.app/u/AbC123",
+    "https://twir.app:8080/u/AbC123",
+    "ftp://twir.app/u/AbC123",
+    "javascript:alert(1)",
+    "not a URL",
+  ]) {
+    test(`ignores ${value}`, () => expect(getUploaderImageUrl(value)).toBeNull());
+  }
+});
 
 describe("site allowlist", () => {
   for (const url of [

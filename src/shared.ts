@@ -23,6 +23,28 @@ export interface UploadMessage {
 
 export type UploadReply = { ok: true; url: string } | { ok: false; error: string };
 
+// Only Uploader files, never Twir pages, short links, or API endpoints.
+export function getUploaderImageUrl(value: string): string | null {
+  try {
+    const url = new URL(value);
+    if (
+      !["https:", "http:"].includes(url.protocol) ||
+      url.hostname !== "twir.app" ||
+      url.port ||
+      url.username ||
+      url.password ||
+      !/^\/u\/[A-Za-z0-9_-]+$/.test(url.pathname)
+    )
+      return null;
+    url.protocol = "https:";
+    url.search = "";
+    url.hash = "";
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
 export function isAllowedPage(value: string): boolean {
   try {
     const { protocol, hostname } = new URL(value);

@@ -6,6 +6,7 @@ import { createCopyButton } from "../../src/copy-button";
 import { createNotice } from "../../src/notice";
 import { findTwitchChatInput, mountNotice } from "../../src/notice-placement";
 import type { UploadReply } from "../../src/shared";
+import { observeChatPreviews } from "../../src/chat-previews";
 
 // This File was created by a page script, not by the extension's isolated world.
 const pageFile = (document.getElementById("page-file") as HTMLInputElement).files![0]!;
@@ -47,6 +48,86 @@ function twitchChat() {
   document.body.append(chat);
   return { chat, editor };
 }
+
+// Detached fixtures keep lazy images offscreen: these checks make no image requests.
+function previewChat(hostname = "www.twitch.tv") {
+  const root = document.createElement("div");
+  root.id = "chatroom-messages";
+  const message = document.createElement("div");
+  message.className = hostname.endsWith("kick.com") ? "chat-entry" : "chat-line__message";
+  const link = document.createElement("a");
+  link.href = "https://twir.app/u/AbC123";
+  link.textContent = link.href;
+  message.append(link);
+  root.append(message);
+  return { root, message, link };
+}
+
+function previewHost(message: Element) {
+  return message.querySelector<HTMLElement>("[data-imageuploader-preview]");
+}
+
+for (const hostname of ["www.twitch.tv", "kick.com"]) {
+  test(`${hostname}: Uploader thumbnail is below the unchanged message link`, () => {
+    const { root, message, link } = previewChat(hostname);
+    const stop = observeChatPreviews(root, hostname);
+    try {
+      const host = previewHost(message);
+      assert(host && message.lastElementChild === host, "preview not below message");
+      assert(message.firstElementChild === link && link.textContent === link.href, "link changed");
+      const image = host.shadowRoot!.querySelector("img")!;
+      assert(image.src === link.href, "wrong image source");
+      assert(image.loading === "lazy" && image.decoding === "async", "eager image loading");
+      assert(image.referrerPolicy === "no-referrer", "page referrer can leak");
+      const previewLink = image.parentElement as HTMLAnchorElement;
+      assert(
+        previewLink.target === "_blank" && previewLink.rel.includes("noreferrer"),
+        "unsafe link",
+      );
+    } finally {
+      stop();
+    }
+    assert(!previewHost(message), "cleanup left a preview behind");
+  });
+}
+
+test("previews ignore other Twir pages, outside-chat links, editors and lookalike sites", () => {
+  const { root, message, link } = previewChat();
+  link.href = "https://twir.app/uploader";
+  const outside = document.createElement("a");
+  outside.href = "https://twir.app/u/Outside";
+  root.append(outside);
+  const editor = message.cloneNode(true) as HTMLElement;
+  editor.contentEditable = "true";
+  (editor.firstElementChild as HTMLAnchorElement).href = "https://twir.app/u/Draft";
+  root.append(editor);
+  const stop = observeChatPreviews(root, "www.twitch.tv");
+  try {
+    assert(!root.querySelector("[data-imageuploader-preview]"), "non-chat/image link previewed");
+  } finally {
+    stop();
+  }
+  link.href = "https://twir.app/u/AbC123";
+  const stopUnsupported = observeChatPreviews(root, "twitch.tv.evil.com");
+  assert(!previewHost(message), "unsupported host previewed");
+  stopUnsupported();
+});
+
+test("duplicate image URLs are collapsed and previews per message are bounded", () => {
+  const { root, message, link } = previewChat();
+  for (const id of ["AbC123?duplicate=1", "Second", "Third", "Fourth"]) {
+    const other = link.cloneNode(true) as HTMLAnchorElement;
+    other.href = `https://twir.app/u/${id}`;
+    message.append(other);
+  }
+  const stop = observeChatPreviews(root, "twitch.tv");
+  try {
+    assert(previewHost(message)?.shadowRoot?.querySelectorAll("img").length === 3, "wrong limit");
+    assert(message.querySelectorAll("a").length === 5, "original links changed");
+  } finally {
+    stop();
+  }
+});
 
 test("inline notices only target a Twitch chat input, not other sites or editors", () => {
   const { chat, editor } = twitchChat();
@@ -254,10 +335,67 @@ async function checkClipboard() {
   } catch (error) {
     results.push({ name: backgroundTest, error: errorMessage(error) });
   }
+  await checkChatPreviews();
   await checkNoticePlacement();
   await checkCopyButtons();
   await checkNoticeCountdown();
   await fetch("/results", { method: "POST", body: JSON.stringify(results) });
+}
+
+async function checkChatPreviews() {
+  const tick = () => new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+  await check(
+    "previews follow new messages, edited/deleted links and chat remounts without duplicates",
+    async () => {
+      const { root, message, link } = previewChat();
+      const stop = observeChatPreviews(root, "twitch.tv");
+      try {
+        await tick();
+        const first = previewHost(message);
+        message.prepend(document.createTextNode("edited message "));
+        await tick();
+        assert(previewHost(message) === first, "unrelated mutations recreated preview");
+        link.href = "http://twir.app/u/Changed?tracking=1#fragment";
+        await tick();
+        assert(
+          previewHost(message)?.shadowRoot?.querySelector("img")?.src ===
+            "https://twir.app/u/Changed",
+          "edited URL ignored",
+        );
+        link.remove();
+        await tick();
+        assert(!previewHost(message), "deleted link left a preview");
+        root.replaceChildren();
+        const replacement = previewChat();
+        root.append(replacement.message);
+        await tick();
+        assert(previewHost(replacement.message), "remounted chat ignored");
+        replacement.message.querySelector("[data-imageuploader-preview]")!.remove();
+        await tick();
+        assert(
+          replacement.message.querySelectorAll("[data-imageuploader-preview]").length === 1,
+          "removed preview not restored exactly once",
+        );
+      } finally {
+        stop();
+      }
+    },
+  );
+  await check("failed images disappear without retries or removing the original link", async () => {
+    const { root, message, link } = previewChat();
+    const stop = observeChatPreviews(root, "twitch.tv");
+    try {
+      previewHost(message)!.shadowRoot!.querySelector("img")!.dispatchEvent(new Event("error"));
+      await tick();
+      assert(!previewHost(message), "broken image retained");
+      message.prepend(document.createTextNode("updated "));
+      await tick();
+      assert(!previewHost(message), "broken image retried");
+      assert(link.parentElement === message, "original link removed");
+    } finally {
+      stop();
+    }
+  });
 }
 
 async function checkNoticePlacement() {
@@ -397,14 +535,12 @@ async function checkCopyButtons() {
   });
 }
 
-async function captureNotices(
-  run: (
-    create: (
-      writeText: (text: string) => Promise<void>,
-      chatInput?: Element | null,
-    ) => { notify: ReturnType<typeof createNotice>; root: ShadowRoot; host: Element },
-  ) => Promise<void>,
-) {
+type TestNoticeFactory = (
+  writeText: (text: string) => Promise<void>,
+  chatInput?: Element | null,
+) => { notify: ReturnType<typeof createNotice>; root: ShadowRoot; host: Element };
+
+async function captureNotices(run: (create: TestNoticeFactory) => Promise<void>) {
   const attachShadow = Element.prototype.attachShadow;
   const roots: ShadowRoot[] = [];
   Element.prototype.attachShadow = function (options) {
@@ -425,8 +561,72 @@ async function captureNotices(
   }
 }
 
+async function checkNoticePreviews(testNotice: TestNoticeFactory) {
+  const { chat } = twitchChat();
+  try {
+    for (const placement of [null, chat]) {
+      await check(
+        `${placement ? "inline" : "floating"} upload panel shows a preview for each link`,
+        async () => {
+          let copied = "";
+          const { notify, root } = testNotice(async (text) => {
+            copied = text;
+          }, placement);
+          const urls = ["https://twir.app/u/First", "https://twir.app/u/Second"];
+          try {
+            notify("Uploaded. Copy the link:", urls, true);
+            const images = root.querySelectorAll<HTMLImageElement>(".preview img");
+            assert(images.length === 2, "missing upload previews");
+            for (const [index, image] of images.entries()) {
+              const preview = image.parentElement as HTMLAnchorElement;
+              assert(
+                image.src === urls[index] && preview.href === urls[index],
+                "wrong preview URL",
+              );
+              assert(
+                image.loading === "lazy" && image.decoding === "async",
+                "eager preview loading",
+              );
+              assert(image.referrerPolicy === "no-referrer", "page referrer can leak");
+              assert(
+                preview.target === "_blank" && preview.rel.includes("noreferrer"),
+                "unsafe preview link",
+              );
+              assert(
+                preview.nextElementSibling?.className === "link",
+                "preview not above its copy row",
+              );
+            }
+            const links = root.querySelector<HTMLElement>(".links")!;
+            assert(getComputedStyle(links).overflowY === "auto", "multiple uploads cannot scroll");
+            images[0]!.dispatchEvent(new Event("error"));
+            assert(root.querySelectorAll(".preview").length === 1, "broken preview retained");
+            const inputs = root.querySelectorAll<HTMLInputElement>("input");
+            assert(
+              inputs.length === 2 && inputs[0]!.value === urls[0],
+              "broken image removed its link",
+            );
+            root.querySelectorAll<HTMLButtonElement>(".copy-button")[1]!.click();
+            await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+            assert(copied === urls[1], "preview changed copy behavior");
+            notify("Uploading another image…", [], true);
+            assert(!root.querySelector(".preview, .link"), "update retained old previews or links");
+            notify("Not an Uploader image", ["https://twir.app/uploader"], true);
+            assert(!root.querySelector(".preview"), "non-image URL previewed");
+          } finally {
+            root.querySelector<HTMLButtonElement>("header button")!.click();
+          }
+        },
+      );
+    }
+  } finally {
+    chat.remove();
+  }
+}
+
 async function checkNoticeCountdown() {
   await captureNotices(async (testNotice) => {
+    await checkNoticePreviews(testNotice);
     const tick = () => new Promise<void>((resolve) => window.setTimeout(resolve, 0));
     const waitForDismiss = () => new Promise<void>((resolve) => window.setTimeout(resolve, 3_100));
     let write: () => Promise<void> = async () => {};

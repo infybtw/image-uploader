@@ -4,6 +4,7 @@ import { createNotice } from "./notice";
 import { findTwitchChatInput } from "./notice-placement";
 import { errorMessage, isAllowedPage, validateImage, type ImagePayload } from "./shared";
 import type { WriteText } from "./copy-button";
+import { registerChatPreviews } from "./chat-previews";
 
 export function registerPasteHandler(
   upload: (image: ImagePayload) => Promise<string>,
@@ -12,6 +13,7 @@ export function registerPasteHandler(
   let busy = false;
 
   if (isAllowedPage(location.href)) {
+    registerChatPreviews();
     document.addEventListener(
       "paste",
       (event) => {

@@ -52,7 +52,8 @@ const server = Bun.serve({
         transfer.items.add(new File([new Uint8Array([0, 1, 2, 255])], "private-name.png", { type: "image/png" }));
         document.getElementById("page-file").files = transfer.files;
       </script>`,
-      { headers: { "Content-Type": "text/html" } },
+      // Preview tests inspect image elements and simulate failures; never fetch real uploads.
+      { headers: { "Content-Type": "text/html", "Content-Security-Policy": "img-src 'none'" } },
     );
   },
 });

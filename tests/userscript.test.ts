@@ -159,8 +159,12 @@ test("userscript is a self-contained installable bundle without extension runtim
     ]) {
       const addEventListener = mock(() => {});
       // No browser/chrome runtime, network API or clipboard access is available.
-      runInNewContext(script, { URL, location: { href }, document: { addEventListener } });
-      expect(addEventListener.mock.calls.length).toBe(href.includes("evil.com") ? 0 : 1);
+      runInNewContext(script, {
+        URL,
+        location: { href },
+        document: { addEventListener, readyState: "loading" },
+      });
+      expect(addEventListener.mock.calls.length).toBe(href.includes("evil.com") ? 0 : 2);
     }
   } finally {
     await rm(directory, { recursive: true, force: true });

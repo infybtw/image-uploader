@@ -1,4 +1,10 @@
-import { MAX_IMAGE_SIZE, UPLOAD_ENDPOINT, errorMessage, validateImage } from "./shared";
+import {
+  MAX_IMAGE_SIZE,
+  UPLOAD_ENDPOINT,
+  errorMessage,
+  getUploaderImageUrl,
+  validateImage,
+} from "./shared";
 import { UPLOAD_TIMEOUT_MS } from "./config";
 
 export function decodeImage(payload: unknown): File {
@@ -37,21 +43,10 @@ export function parseUploadUrl(body: unknown): string {
   } catch {
     throw new Error("Twir returned an invalid link.");
   }
-  if (
-    !["https:", "http:"].includes(url.protocol) ||
-    url.hostname !== "twir.app" ||
-    url.port ||
-    url.username ||
-    url.password ||
-    !/^\/u\/[A-Za-z0-9_-]+$/.test(url.pathname)
-  ) {
-    throw new Error("Twir returned an unexpected link.");
-  }
+  const imageUrl = getUploaderImageUrl(url.href);
+  if (!imageUrl) throw new Error("Twir returned an unexpected link.");
   // The public API examples currently use http; never insert an insecure URL.
-  url.protocol = "https:";
-  url.search = "";
-  url.hash = "";
-  return url.href;
+  return imageUrl;
 }
 
 type Fetch = (url: string, init: RequestInit) => Promise<Response>;

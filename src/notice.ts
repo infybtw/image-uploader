@@ -1,5 +1,6 @@
 import { createCopyButton, type WriteText } from "./copy-button";
 import { mountNotice } from "./notice-placement";
+import { getUploaderImageUrl } from "./shared";
 
 const COPY_DISMISS_DELAY = 3_000;
 let latestNoticeId = 0;
@@ -19,6 +20,10 @@ export function createNotice(writeText?: WriteText, chatInput: Element | null = 
     header button { display: grid; place-items: center; flex-shrink: 0; width: 28px; height: 28px;
       padding: 0; font-size: 22px; line-height: 1; }
     p { margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .links { max-height: min(320px, 50vh); overflow-y: auto; }
+    .preview { display: block; margin-top: 8px; border-radius: 6px; overflow: hidden; background: #80808018; }
+    .preview:focus-visible { outline: 2px solid #a78bfa; outline-offset: -2px; }
+    .preview img { display: block; width: 100%; height: 120px; object-fit: contain; }
     .link { display: flex; align-items: center; margin-top: 8px; border: 1px solid #555;
       border-radius: 6px; background: #09090b; overflow: hidden; }
     .link:focus-within { border-color: #a78bfa; }
@@ -115,6 +120,25 @@ export function createNotice(writeText?: WriteText, chatInput: Element | null = 
     status.textContent = message;
     links.replaceChildren();
     for (const url of urls) {
+      const upload = document.createElement("div");
+      const imageUrl = getUploaderImageUrl(url);
+      if (imageUrl) {
+        const preview = document.createElement("a");
+        preview.className = "preview";
+        preview.href = imageUrl;
+        preview.target = "_blank";
+        preview.rel = "noopener noreferrer";
+        preview.title = "Open image on Twir";
+        const image = document.createElement("img");
+        image.alt = "Uploaded image preview";
+        image.loading = "lazy";
+        image.decoding = "async";
+        image.referrerPolicy = "no-referrer";
+        image.addEventListener("error", () => preview.remove(), { once: true });
+        image.src = imageUrl;
+        preview.append(image);
+        upload.append(preview);
+      }
       const row = document.createElement("div");
       row.className = "link";
       const input = document.createElement("input");
@@ -135,7 +159,8 @@ export function createNotice(writeText?: WriteText, chatInput: Element | null = 
       copy.element.addEventListener("click", cancelDismiss);
       copyButtons.push(copy);
       row.append(input, copy.element);
-      links.append(row);
+      upload.append(row);
+      links.append(upload);
     }
     if (!persistent) dismissTimer = window.setTimeout(dismiss, 8_000);
   };

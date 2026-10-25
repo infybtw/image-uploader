@@ -54,7 +54,15 @@ Context-menu paste and other system paste shortcuts also work: the extension han
 
 The panel stays visible until you close it. It is embedded in the Twitch page without covering chat messages, uses Twitch theme colors, and reattaches if Twitch replaces the chat input. If the chat input disappears or its layout is not recognized, a floating notification keeps the links available. Chat content and caret position are unchanged; the clipboard is overwritten only when you click the copy button. After a successful copy, the Morphicons/Lucide icon morphs into a green checkmark and changes back after 2 seconds. The animation respects reduced-motion preferences.
 
+Each uploaded link also has a clickable image preview above its copy row, in both the inline panel and floating notification. Thumbnails open the image in a new tab; failed previews disappear without affecting the link or copy button. Multiple uploads scroll within the panel.
+
 Multiple images upload sequentially. Failed uploads are not retried automatically; completed links remain available if a later upload fails.
+
+### Image previews in chat
+
+Both the extension and userscript show clickable thumbnails below messages containing Twir Uploader links (`https://twir.app/u/<id>`) in Twitch and Kick chat. This is a local feature: other viewers need the extension or userscript to see previews. Other Twir pages and shortened URLs are ignored, and original message links stay unchanged.
+
+Previews work for existing and newly arriving messages, including after chat navigation/remounting. Images load lazily, with up to three unique previews per message. Clicking a thumbnail opens the image in a new tab. Failed or deleted images leave only the original link. Unrecognized chat layouts are left unchanged.
 
 ## Commands
 
@@ -91,12 +99,12 @@ Pushing a tag `vX.Y.Z` runs the same checks and publishes a GitHub Release with 
 - `imageuploader.meta.js` — userscript update metadata.
 - `SHA256SUMS` — SHA-256 checksums of the ZIP and JavaScript assets.
 
-To publish, set the same new, increasing **stable `X.Y.Z` version** in `package.json` and `extension/manifest.json`, commit and push the changes, then push the matching tag. For version 0.2.1:
+To publish, set the same new, increasing **stable `X.Y.Z` version** in `package.json` and `extension/manifest.json`, commit and push the changes, then push the matching tag. For version 0.3.0:
 
 ```sh
-bun run release:check v0.2.1
-git tag v0.2.1
-git push origin v0.2.1
+bun run release:check v0.3.0
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
 Tag/version mismatches and prerelease tags fail before publishing. Published releases are not overwritten; use a new version and tag for changes. The workflow uses the built-in `GITHUB_TOKEN` with `contents: write` only in the release job; no personal token or extra secrets are required. GitHub Actions must be enabled and repository/organization policy must allow release creation. The repository must be public for anonymous downloads and Tampermonkey updates.
@@ -186,10 +194,10 @@ An internet connection is required to install Bun and locked packages. Building 
 
    WXT rebuilds and generates:
 
-   - `dist/imageuploader-firefox-0.2.1.zip`: unsigned extension.
-   - `dist/imageuploader-0.2.1-sources.zip`: source submission, including the configuration, lockfile, scripts, tests, license, and README.
+   - `dist/imageuploader-firefox-0.3.0.zip`: unsigned extension.
+   - `dist/imageuploader-0.3.0-sources.zip`: source submission, including the configuration, lockfile, scripts, tests, license, and README.
 
-For Chrome, use `bun run build:chrome` or `bun run package:chrome`. Its output is `dist/chrome/`, the timeout is 25 seconds, and the archive is `dist/imageuploader-chrome-0.2.1.zip`. `bun run build` processes both browser targets and the userscript; `bun run package` packages only the browser extensions.
+For Chrome, use `bun run build:chrome` or `bun run package:chrome`. Its output is `dist/chrome/`, the timeout is 25 seconds, and the archive is `dist/imageuploader-chrome-0.3.0.zip`. `bun run build` processes both browser targets and the userscript; `bun run package` packages only the browser extensions.
 
 ### Verification
 
@@ -215,3 +223,5 @@ The test runner directly launches an isolated temporary browser profile and inst
 Pasting an image **immediately uploads it to the third-party service Twir**, where it becomes accessible via a public link. Do not paste confidential images. Closing a notification or undoing chat text does not delete the upload. Retention/deletion policies belong to [Twir](https://twir.app/privacy); anonymous upload management is not implemented.
 
 Both versions read images only from a trusted paste event in an editable field. They do not poll the clipboard, read browsing history, or store uploads. Filenames become `pasted-image.<format>`; image bytes and metadata are unchanged. Cookies, page URLs, and chat text are not sent to the API. There is no telemetry. Transmission of pasted images is declared by the Firefox extension as `personalCommunications`.
+
+Chat previews also inspect links inside rendered chat messages locally. Displaying a preview in chat or the upload panel makes a normal browser image request to Twir, which reveals your IP address and the requested image ID; cookies follow the browser's usual third-party cookie policy. These requests omit the page referrer. No chat text is uploaded or stored.
