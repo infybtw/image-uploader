@@ -15,7 +15,7 @@ export async function buildUserscript(outdir = "dist") {
     `// @downloadURL  ${releaseUrl}/imageuploader.user.js`,
     "// @license      MIT",
     ...SITE_MATCHES.map((match) => `// @match        ${match}`),
-    "// @connect      twir.app",
+    "// @connect      *",
     "// @grant        GM_xmlhttpRequest",
     "// @grant        GM.setClipboard",
     "// @sandbox      DOM",

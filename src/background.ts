@@ -1,11 +1,30 @@
 import { errorMessage, isAllowedPage, type UploadReply } from "./shared";
 import { uploadImage } from "./upload";
 import { browser, type Browser } from "wxt/browser";
+import { loadPreviewPage, type PreviewPageReply } from "./preview-page";
 
 const activeTabs = new Set<number>();
 
 export function registerBackground() {
   browser.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+    if (
+      message &&
+      typeof message === "object" &&
+      "type" in message &&
+      message.type === "preview-page"
+    ) {
+      const allowed =
+        sender.id === browser.runtime.id &&
+        typeof sender.tab?.id === "number" &&
+        sender.url &&
+        isAllowedPage(sender.url);
+      void (
+        allowed
+          ? loadPreviewPage("url" in message ? message.url : undefined)
+          : Promise.resolve(null)
+      ).then((page) => sendResponse({ page } satisfies PreviewPageReply));
+      return true;
+    }
     if (
       !message ||
       typeof message !== "object" ||
