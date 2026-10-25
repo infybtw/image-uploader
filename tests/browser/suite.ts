@@ -1376,6 +1376,10 @@ async function checkSettings() {
         assert(host.getAttribute(SETTINGS_BUTTON_ATTRIBUTE) === "twitch", "wrong site styling");
 
         const button = host.shadowRoot!.querySelector<HTMLButtonElement>("button")!;
+        assert(
+          getComputedStyle(button).color === "rgb(255, 255, 255)",
+          "settings gear is not white",
+        );
         button.click();
         const panel = document.querySelector<HTMLElement>(`[${SETTINGS_PANEL_ATTRIBUTE}]`);
         assert(panel?.shadowRoot, "settings panel did not open");
@@ -1442,6 +1446,8 @@ async function checkSettings() {
         host.parentElement === getKicks.parentElement,
         "settings button is in the wrong group",
       );
+      const button = host.shadowRoot!.querySelector<HTMLButtonElement>("button")!;
+      assert(getComputedStyle(button).color === "rgb(255, 255, 255)", "settings gear is not white");
     } finally {
       stop();
       nav.remove();

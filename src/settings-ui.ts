@@ -105,17 +105,17 @@ function createButton(doc: Document, site: Site, open: () => void) {
   style.textContent =
     site === "kick"
       ? `
-        :host { color: #fafafa; }
+        :host { color: #fff; }
         button { all: unset; box-sizing: border-box; display: grid; place-items: center; width: 36px;
-          height: 36px; border-radius: 8px; background: #27272a; color: inherit; cursor: pointer;
+          height: 36px; border-radius: 8px; background: #27272a; color: #fff; cursor: pointer;
           transition: background-color .12s; }
         button:hover { background: #3f3f46; }
         button:focus-visible { outline: 2px solid #53fc18; outline-offset: 2px; }
       `
       : `
-        :host { color: inherit; }
+        :host { color: #fff; }
         button { all: unset; box-sizing: border-box; display: grid; place-items: center; width: 30px;
-          height: 30px; border-radius: 6px; color: inherit; cursor: pointer; transition: background-color .12s; }
+          height: 30px; border-radius: 6px; color: #fff; cursor: pointer; transition: background-color .12s; }
         button:hover { background: #ffffff1a; }
         button:focus-visible { outline: 2px solid #a970ff; outline-offset: 2px; }
       `;
