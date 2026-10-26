@@ -1,5 +1,6 @@
 import { Settings as SettingsIcon } from "lucide";
 import type { Settings, SettingsController } from "./settings";
+import { normalizeDomainList, normalizeUserList } from "./preview-filters";
 
 export const SETTINGS_BUTTON_ATTRIBUTE = "data-imageuploader-settings";
 export const SETTINGS_PANEL_ATTRIBUTE = "data-imageuploader-settings-panel";
@@ -169,22 +170,34 @@ function buildPanel(doc: Document, settings: SettingsController) {
   style.textContent = `
     :host { color-scheme: dark; }
     * { box-sizing: border-box; }
-    .card { width: 336px; max-width: calc(100vw - 16px); padding: 14px;
+    [hidden] { display: none !important; }
+    ::selection { background: #9147ff; color: #fff; }
+    .card { display: flex; flex-direction: column; width: 420px; max-width: calc(100vw - 16px);
+      max-height: calc(100dvh - 16px); overflow: hidden;
       background: #18181b; color: #fafafa; border: 1px solid #3f3f46; border-radius: 10px;
       box-shadow: 0 12px 36px #0008; font: 13px/1.45 system-ui, sans-serif; }
     header { display: flex; align-items: center; justify-content: space-between; gap: 12px;
-      margin-bottom: 4px; }
+      flex: 0 0 auto; padding: 16px 16px 4px 20px; }
     header strong { font-size: 14px; font-weight: 600; }
-    button.close { display: grid; place-items: center; width: 26px; height: 26px; padding: 0;
-      border: 0; border-radius: 6px; background: transparent; color: #a1a1aa; font: 20px/1 inherit;
+    button.close { display: grid; place-items: center; width: 32px; height: 32px; padding: 0;
+      border: 0; border-radius: 6px; background: transparent; color: #a1a1aa;
       cursor: pointer; }
     button.close:hover { background: #27272a; color: #fafafa; }
-    button.close:focus-visible { outline: 2px solid #a78bfa; outline-offset: 1px; }
-    .row { display: flex; align-items: center; gap: 12px; padding: 9px 0;
-      border-top: 1px solid #ffffff14; cursor: pointer; }
-    .copy { display: flex; flex: 1; flex-direction: column; gap: 1px; min-width: 0; }
+    button:focus-visible, .choices input:focus-visible { outline: 2px solid #a78bfa; outline-offset: 2px; }
+    .tabs { display: flex; flex: 0 0 auto; gap: 24px; margin: 0 20px; border-bottom: 1px solid #3f3f46; }
+    .tab { min-height: 40px; padding: 8px 0; border: 0; border-bottom: 2px solid transparent;
+      background: transparent; color: #a1a1aa; font: inherit; font-weight: 500; cursor: pointer; }
+    .tab:hover { color: #fafafa; }
+    .tab[aria-selected="true"] { border-bottom-color: #a78bfa; color: #fafafa; }
+    .tab:focus-visible { outline-offset: -4px; border-radius: 4px; }
+    .panels { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 20px;
+      scrollbar-color: #52525b #18181b; }
+    .tab-panel { display: flex; flex-direction: column; gap: 24px; }
+    .preview-settings { display: flex; flex-direction: column; gap: 16px; }
+    .row { display: flex; align-items: center; gap: 16px; min-height: 44px; cursor: pointer; }
+    .copy { display: flex; flex: 1; flex-direction: column; gap: 4px; min-width: 0; }
     .copy strong { font-size: 13px; font-weight: 500; }
-    .copy small { color: #a1a1aa; font-size: 11px; line-height: 1.35; }
+    .copy small, .list small { color: #a1a1aa; font-size: 12px; line-height: 1.5; }
     .switch { appearance: none; flex: 0 0 auto; width: 34px; height: 20px; margin: 0;
       border-radius: 999px; background: #3f3f46; cursor: pointer; position: relative;
       transition: background-color .15s; }
@@ -193,13 +206,22 @@ function buildPanel(doc: Document, settings: SettingsController) {
     .switch:checked { background: #9147ff; }
     .switch:checked::after { transform: translateX(14px); }
     .switch:focus-visible { outline: 2px solid #a78bfa; outline-offset: 2px; }
-    fieldset { margin: 0; padding: 9px 0 2px; border: 0; border-top: 1px solid #ffffff14; }
-    legend { padding: 0; margin-bottom: 6px; font-size: 13px; font-weight: 500; }
-    .choices { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+    fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+    legend { padding: 0; margin-bottom: 4px; font-size: 13px; font-weight: 500; }
+    .choices { display: flex; flex-wrap: wrap; gap: 4px 20px; }
     .choices label { display: flex; align-items: center; gap: 6px; color: #d4d4d8;
-      font-size: 12px; cursor: pointer; }
+      min-height: 32px; cursor: pointer; }
     .choices input { accent-color: #9147ff; margin: 0; }
-    .note { margin: 9px 0 0; color: #71717a; font-size: 11px; }
+    fieldset:disabled legend, fieldset:disabled label { color: #a1a1aa; cursor: default; }
+    .list { display: flex; flex-direction: column; gap: 4px; }
+    .list span { font-weight: 500; }
+    textarea { width: 100%; min-height: 80px; resize: vertical; margin-top: 4px; padding: 8px 12px;
+      border: 1px solid #52525b; border-radius: 6px; background: #09090b; color: #fafafa;
+      caret-color: #a78bfa; font: 13px/1.5 system-ui, sans-serif; }
+    textarea::placeholder { color: #a1a1aa; opacity: 1; }
+    textarea:hover { border-color: #71717a; }
+    textarea:focus-visible { outline: 2px solid #a78bfa; outline-offset: 1px; }
+    .note { flex: 0 0 auto; margin: 0; padding: 0 20px 16px; color: #a1a1aa; font-size: 12px; }
     @media (prefers-reduced-motion: reduce) {
       .switch, .switch::after { transition: none; }
     }
@@ -216,9 +238,86 @@ function buildPanel(doc: Document, settings: SettingsController) {
   const closeButton = doc.createElement("button");
   closeButton.type = "button";
   closeButton.className = "close";
-  closeButton.textContent = "×";
+  const closeIcon = doc.createElementNS(SVG_NS, "svg");
+  closeIcon.setAttribute("width", "16");
+  closeIcon.setAttribute("height", "16");
+  closeIcon.setAttribute("viewBox", "0 0 24 24");
+  closeIcon.setAttribute("aria-hidden", "true");
+  closeIcon.setAttribute("focusable", "false");
+  const closePath = doc.createElementNS(SVG_NS, "path");
+  closePath.setAttribute("d", "M18 6 6 18M6 6l12 12");
+  closePath.setAttribute("stroke", "currentColor");
+  closePath.setAttribute("stroke-width", "2");
+  closePath.setAttribute("stroke-linecap", "round");
+  closeIcon.append(closePath);
+  closeButton.append(closeIcon);
   closeButton.setAttribute("aria-label", "Close settings");
   header.append(title, closeButton);
+
+  const tabList = doc.createElement("div");
+  tabList.className = "tabs";
+  tabList.setAttribute("role", "tablist");
+  tabList.setAttribute("aria-label", "Settings categories");
+  const panels = doc.createElement("div");
+  panels.className = "panels";
+  const tabs: HTMLButtonElement[] = [];
+  const tabPanels: HTMLElement[] = [];
+  const selectTab = (index: number) => {
+    tabs.forEach((tab, position) => {
+      const selected = position === index;
+      tab.setAttribute("aria-selected", String(selected));
+      tab.tabIndex = selected ? 0 : -1;
+      tabPanels[position]!.hidden = !selected;
+    });
+    panels.scrollTop = 0;
+  };
+  for (const [id, label] of [
+    ["general", "General"],
+    ["filters", "Filters"],
+  ] as const) {
+    const tab = doc.createElement("button");
+    const index = tabs.length;
+    tab.type = "button";
+    tab.id = `settings-tab-${id}`;
+    tab.className = "tab";
+    tab.textContent = label;
+    tab.setAttribute("role", "tab");
+    tab.setAttribute("aria-controls", `settings-panel-${id}`);
+    tab.addEventListener("click", () => selectTab(index));
+    tab.addEventListener("keydown", (event) => {
+      let next: number;
+      switch (event.key) {
+        case "ArrowRight":
+          next = (index + 1) % tabs.length;
+          break;
+        case "ArrowLeft":
+          next = (index + tabs.length - 1) % tabs.length;
+          break;
+        case "Home":
+          next = 0;
+          break;
+        case "End":
+          next = tabs.length - 1;
+          break;
+        default:
+          return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      selectTab(next);
+      tabs[next]!.focus({ preventScroll: true });
+    });
+    const tabPanel = doc.createElement("div");
+    tabPanel.id = `settings-panel-${id}`;
+    tabPanel.className = "tab-panel";
+    tabPanel.setAttribute("role", "tabpanel");
+    tabPanel.setAttribute("aria-labelledby", tab.id);
+    tabs.push(tab);
+    tabPanels.push(tabPanel);
+    tabList.append(tab);
+    panels.append(tabPanel);
+  }
+  selectTab(0);
 
   const previews = toggleRow(
     doc,
@@ -229,13 +328,14 @@ function buildPanel(doc: Document, settings: SettingsController) {
   );
   const autoInsert = toggleRow(
     doc,
-    "Insert the link into chat automatically",
-    "Adds the link to your unsent message when the upload finishes. This notification closes after 3 seconds.",
+    "Auto-insert uploaded links",
+    "Adds the link to your draft, but never sends it. The upload notification closes after 3 seconds.",
     settings.get().autoInsert,
     (checked) => settings.update({ autoInsert: checked }),
   );
 
   const fieldset = doc.createElement("fieldset");
+  fieldset.disabled = !settings.get().chatPreviews;
   const legend = doc.createElement("legend");
   legend.textContent = "Clicking a chat preview";
   const choices = doc.createElement("div");
@@ -260,20 +360,80 @@ function buildPanel(doc: Document, settings: SettingsController) {
   }
   fieldset.append(legend, choices);
 
+  const bots = toggleRow(
+    doc,
+    "Hide previews from bots",
+    "Known bot accounts and messages with a bot badge. Add other bots to the username list.",
+    settings.get().hideBots,
+    (checked) => settings.update({ hideBots: checked }),
+  );
+  const listField = (
+    key: "blockedUsers" | "blockedDomains",
+    labelText: string,
+    hint: string,
+    placeholder: string,
+    normalize: (value: unknown) => string[],
+  ) => {
+    const label = doc.createElement("label");
+    label.className = "list";
+    const title = doc.createElement("span");
+    title.textContent = labelText;
+    const description = doc.createElement("small");
+    description.textContent = hint;
+    const input = doc.createElement("textarea");
+    input.name = key;
+    input.rows = 2;
+    input.placeholder = placeholder;
+    input.spellcheck = false;
+    input.value = settings.get()[key].join("\n");
+    input.addEventListener("input", () => settings.update({ [key]: normalize(input.value) }));
+    label.append(title, description, input);
+    const sync = (values: string[]) => {
+      // Preserve the raw draft across tabs and unrelated settings changes, while
+      // still accepting a different list saved by another browser tab.
+      if (root.activeElement !== input && normalize(input.value).join("\n") !== values.join("\n"))
+        input.value = values.join("\n");
+    };
+    return { label, input, sync };
+  };
+  const users = listField(
+    "blockedUsers",
+    "Excluded usernames",
+    "One per line or separated by commas. Case-insensitive; @ is optional.",
+    "username, another_user",
+    normalizeUserList,
+  );
+  const domains = listField(
+    "blockedDomains",
+    "Excluded domains",
+    "One per line or separated by commas. Includes subdomains; URLs are accepted too.",
+    "example.com, another.site",
+    normalizeDomainList,
+  );
+  const previewSettings = doc.createElement("div");
+  previewSettings.className = "preview-settings";
+  previewSettings.append(previews.row, fieldset);
+  tabPanels[0]!.append(previewSettings, autoInsert.row);
+  tabPanels[1]!.append(bots.row, users.label, domains.label);
+
   const note = doc.createElement("p");
   note.className = "note";
-  note.textContent = "Settings are saved in this browser.";
+  note.textContent = "Changes apply immediately and are saved in this browser.";
 
-  card.append(header, previews.row, autoInsert.row, fieldset, note);
+  card.append(header, tabList, panels, note);
   root.append(style, card);
 
   const sync = (next: Settings) => {
     previews.input.checked = next.chatPreviews;
+    fieldset.disabled = !next.chatPreviews;
     autoInsert.input.checked = next.autoInsert;
+    bots.input.checked = next.hideBots;
+    users.sync(next.blockedUsers);
+    domains.sync(next.blockedDomains);
     for (const radio of radios) radio.checked = next.previewClick === radio.value;
   };
 
-  return { host, card, closeButton, firstInput: previews.input, sync };
+  return { host, card, closeButton, firstInput: tabs[0]!, sync };
 }
 
 function mount(doc: Document, site: Site, settings: SettingsController) {
@@ -336,10 +496,13 @@ function mount(doc: Document, site: Site, settings: SettingsController) {
       host.style.top = `${Math.round(top)}px`;
     };
     const unsubscribe = settings.subscribe(created.sync);
+    // Tab changes and resized textareas can change the panel's anchored height.
+    const resizeObserver = new ResizeObserver(place);
     closePanel = (restoreFocus = true) => {
       if (closed) return;
       closed = true;
       unsubscribe();
+      resizeObserver.disconnect();
       view.removeEventListener("resize", place);
       doc.removeEventListener("scroll", place, true);
       doc.removeEventListener("pointerdown", outside, true);
@@ -353,6 +516,7 @@ function mount(doc: Document, site: Site, settings: SettingsController) {
     doc.documentElement.append(host);
     setExpanded(true);
     place();
+    resizeObserver.observe(created.card);
     view.addEventListener("resize", place);
     doc.addEventListener("scroll", place, true);
     doc.addEventListener("pointerdown", outside, true);

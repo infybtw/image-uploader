@@ -1,15 +1,23 @@
+import { normalizeDomainList, normalizeUserList } from "./preview-filters";
+
 export type PreviewClick = "viewer" | "site";
 
 export interface Settings {
   chatPreviews: boolean;
   autoInsert: boolean;
   previewClick: PreviewClick;
+  blockedUsers: string[];
+  blockedDomains: string[];
+  hideBots: boolean;
 }
 
 export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   chatPreviews: true,
   autoInsert: false,
   previewClick: "viewer",
+  blockedUsers: [],
+  blockedDomains: [],
+  hideBots: true,
 });
 
 export function normalizeSettings(value: unknown): Settings {
@@ -23,6 +31,9 @@ export function normalizeSettings(value: unknown): Settings {
     autoInsert:
       typeof stored.autoInsert === "boolean" ? stored.autoInsert : DEFAULT_SETTINGS.autoInsert,
     previewClick: stored.previewClick === "site" ? "site" : "viewer",
+    blockedUsers: normalizeUserList(stored.blockedUsers),
+    blockedDomains: normalizeDomainList(stored.blockedDomains),
+    hideBots: typeof stored.hideBots === "boolean" ? stored.hideBots : DEFAULT_SETTINGS.hideBots,
   };
 }
 
@@ -46,12 +57,15 @@ function sameSettings(first: Settings, second: Settings): boolean {
   return (
     first.chatPreviews === second.chatPreviews &&
     first.autoInsert === second.autoInsert &&
-    first.previewClick === second.previewClick
+    first.previewClick === second.previewClick &&
+    first.hideBots === second.hideBots &&
+    JSON.stringify(first.blockedUsers) === JSON.stringify(second.blockedUsers) &&
+    JSON.stringify(first.blockedDomains) === JSON.stringify(second.blockedDomains)
   );
 }
 
 export function createSettings(store: SettingsStore): SettingsController {
-  let current = { ...DEFAULT_SETTINGS };
+  let current = normalizeSettings(undefined);
   const listeners = new Set<(settings: Settings) => void>();
   const emit = () => {
     for (const listener of [...listeners]) listener(current);

@@ -15,10 +15,17 @@ describe("settings validation", () => {
     ).toEqual(DEFAULT_SETTINGS);
   });
 
+  test("hides bot previews until the user opts in", () => {
+    expect(DEFAULT_SETTINGS.hideBots).toBe(true);
+    expect(normalizeSettings({ hideBots: false }).hideBots).toBe(false);
+    expect(normalizeSettings({ hideBots: "no" }).hideBots).toBe(true);
+  });
+
   test("keeps valid stored values", () => {
     expect(
       normalizeSettings({ chatPreviews: false, autoInsert: true, previewClick: "site" }),
     ).toEqual({
+      ...DEFAULT_SETTINGS,
       chatPreviews: false,
       autoInsert: true,
       previewClick: "site",
@@ -27,7 +34,12 @@ describe("settings validation", () => {
 });
 
 describe("settings controller", () => {
-  const stored = { chatPreviews: false, autoInsert: true, previewClick: "site" as const };
+  const stored = {
+    ...DEFAULT_SETTINGS,
+    chatPreviews: false,
+    autoInsert: true,
+    previewClick: "site" as const,
+  };
 
   test("loads stored settings and notifies subscribers", async () => {
     const settings = createSettings({ load: () => stored, save: () => {} });
@@ -57,5 +69,30 @@ describe("settings controller", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(settings.get()).toEqual({ ...stored, chatPreviews: true });
     expect(saves).toBe(0);
+  });
+
+  test("saves exclusion changes and compares lists by value", async () => {
+    const saved: Settings[] = [];
+    const settings = createSettings({ load: () => undefined, save: (value) => saved.push(value) });
+    await settings.ready;
+    settings.update({
+      blockedUsers: ["@SomeUser"],
+      blockedDomains: ["https://Example.com/a"],
+      hideBots: true,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(saved).toEqual([
+      {
+        ...DEFAULT_SETTINGS,
+        blockedUsers: ["someuser"],
+        blockedDomains: ["example.com"],
+        hideBots: true,
+      },
+    ]);
+    settings.update({ blockedUsers: ["someuser"], blockedDomains: ["example.com"] });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(saved).toHaveLength(1);
+    settings.replace(saved[0]);
+    expect(settings.get().hideBots).toBe(true);
   });
 });

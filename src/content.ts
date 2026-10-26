@@ -23,8 +23,28 @@ export function registerPasteHandler(
   let busy = false;
 
   if (isAllowedPage(location.href)) {
-    const previews = registerChatPreviews(resolvePage, () => settings.get().previewClick);
-    const syncPreviews = () => previews.setEnabled(settings.get().chatPreviews);
+    const previews = registerChatPreviews(
+      resolvePage,
+      () => settings.get().previewClick,
+      () => settings.get(),
+      false, // Read saved exclusions before making any chat preview requests.
+    );
+    let filterKey = JSON.stringify([
+      settings.get().blockedUsers,
+      settings.get().blockedDomains,
+      settings.get().hideBots,
+    ]);
+    const syncPreviews = () => {
+      const current = settings.get();
+      previews.setEnabled(current.chatPreviews);
+      const nextKey = JSON.stringify([
+        current.blockedUsers,
+        current.blockedDomains,
+        current.hideBots,
+      ]);
+      if (filterKey !== nextKey) previews.refreshFilters();
+      filterKey = nextKey;
+    };
     settings.subscribe(syncPreviews);
     void settings.ready.then(syncPreviews);
     registerSettingsUi(settings);

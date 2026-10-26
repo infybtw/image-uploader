@@ -14,6 +14,7 @@ import {
   SETTINGS_PANEL_ATTRIBUTE,
 } from "../../src/settings-ui";
 import { checkImageViewer } from "./image-viewer";
+import { checkPreviewFilters } from "./preview-filters";
 import { checkImageEditor, editorFixture } from "./image-editor";
 import {
   createPreviewPageResolver,
@@ -514,6 +515,7 @@ async function checkClipboard() {
     assert(reply?.page === null, "metadata request bypassed the sender allowlist");
   });
   await checkChatPreviews();
+  await checkPreviewFilters(check);
   await checkImageViewer(check);
   await checkImageEditor(check);
   await checkNoticePlacement();
@@ -1384,20 +1386,135 @@ async function checkSettings() {
         const panel = document.querySelector<HTMLElement>(`[${SETTINGS_PANEL_ATTRIBUTE}]`);
         assert(panel?.shadowRoot, "settings panel did not open");
         const root = panel.shadowRoot!;
+        const tabs = [...root.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+        const tabPanels = [...root.querySelectorAll<HTMLElement>('[role="tabpanel"]')];
+        assert(
+          tabs.length === 2 &&
+            tabs[0]!.textContent === "General" &&
+            tabs[1]!.textContent === "Filters",
+          "settings categories missing",
+        );
+        assert(
+          tabs[0]!.getAttribute("aria-selected") === "true" &&
+            tabs[0]!.tabIndex === 0 &&
+            tabs[1]!.tabIndex === -1 &&
+            !tabPanels[0]!.hidden &&
+            tabPanels[1]!.hidden,
+          "General is not the initial tab",
+        );
+        assert(root.activeElement === tabs[0], "opening did not focus the selected tab");
+        assert(
+          tabPanels.every(
+            (tabPanel, index) =>
+              tabs[index]!.getAttribute("aria-controls") === tabPanel.id &&
+              tabPanel.getAttribute("aria-labelledby") === tabs[index]!.id,
+          ),
+          "tabs are not associated with their panels",
+        );
+        for (const [key, index] of [
+          ["ArrowRight", 1],
+          ["ArrowRight", 0],
+          ["ArrowLeft", 1],
+          ["Home", 0],
+          ["End", 1],
+          ["ArrowLeft", 0],
+        ] as const) {
+          root.activeElement!.dispatchEvent(
+            new KeyboardEvent("keydown", {
+              key,
+              bubbles: true,
+              composed: true,
+              cancelable: true,
+            }),
+          );
+          assert(root.activeElement === tabs[index], `${key} did not focus its tab`);
+          assert(
+            tabs[index]!.getAttribute("aria-selected") === "true",
+            `${key} did not select its tab`,
+          );
+          assert(
+            !tabPanels[index]!.hidden && tabPanels[1 - index]!.hidden,
+            `${key} did not switch panels`,
+          );
+        }
         const switches = root.querySelectorAll<HTMLInputElement>(".switch");
-        assert(switches.length === 2, "settings switches missing");
-        assert(switches[0]!.checked && !switches[1]!.checked, "wrong default settings");
+        assert(switches.length === 3, "settings switches missing");
+        assert(
+          switches[0]!.checked && !switches[1]!.checked && switches[2]!.checked,
+          "wrong default settings",
+        );
         switches[0]!.click();
         assert(!settings.get().chatPreviews, "chat preview setting was not applied");
+        const radios = [...root.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
+        assert(
+          radios.every((radio) => radio.matches(":disabled")),
+          "preview action stayed enabled",
+        );
+        radios[1]!.click();
+        assert(settings.get().previewClick === "viewer", "disabled preview action changed");
         switches[1]!.click();
         assert(settings.get().autoInsert, "automatic insertion setting was not applied");
-        const radios = [...root.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
+        tabs[1]!.click();
+        assert(tabPanels[0]!.hidden && !tabPanels[1]!.hidden, "Filters did not open");
+        assert(!switches[2]!.disabled, "filters disabled with chat previews");
+        switches[2]!.click();
+        assert(!settings.get().hideBots, "bot exclusion setting was not applied");
+        const users = root.querySelector<HTMLTextAreaElement>('textarea[name="blockedUsers"]')!;
+        const domains = root.querySelector<HTMLTextAreaElement>('textarea[name="blockedDomains"]')!;
+        users.focus();
+        users.value = "@Someone, Other_User";
+        users.dispatchEvent(new InputEvent("input", { bubbles: true }));
+        assert(
+          users.value === "@Someone, Other_User",
+          "auto-save moved the caret or rewrote a draft",
+        );
+        assert(
+          settings.get().blockedUsers.join(",") === "someone,other_user",
+          "user list not saved",
+        );
+        domains.focus();
+        domains.value = "Example.com\nhttps://cdn.site/photo";
+        domains.dispatchEvent(new InputEvent("input", { bubbles: true }));
+        assert(
+          settings.get().blockedDomains.join(",") === "example.com,cdn.site",
+          "domain list not saved",
+        );
+        domains.value += "\nhttps:";
+        domains.dispatchEvent(new InputEvent("input", { bubbles: true }));
+        domains.setSelectionRange(domains.value.length, domains.value.length);
+        const draft = domains.value;
+        const caret = domains.selectionStart;
+        tabs[0]!.focus();
+        tabs[0]!.click();
+        switches[1]!.click();
+        switches[1]!.click();
+        tabs[1]!.focus();
+        tabs[1]!.click();
+        assert(domains.value === draft, "switching tabs lost a partially typed domain");
+        assert(domains.selectionStart === caret, "switching tabs moved the textarea caret");
+        assert(users.value === "@Someone, Other_User", "switching tabs rewrote the username draft");
+        settings.replace({ ...settings.get(), blockedUsers: ["remote_user"] });
+        assert(
+          String(users.value) === "remote_user",
+          "external list changes were not synchronized",
+        );
+        users.focus();
+        users.value = "@Someone, Other_User";
+        users.dispatchEvent(new InputEvent("input", { bubbles: true }));
+        tabs[0]!.focus();
+        tabs[0]!.click();
+        switches[0]!.click();
+        assert(
+          radios.every((radio) => !radio.matches(":disabled")),
+          "preview action stayed disabled",
+        );
         assert(
           radios.length === 2 && radios[0]!.checked && !radios[1]!.checked,
           "wrong preview click mode",
         );
         radios[1]!.click();
         assert(settings.get().previewClick === "site", "preview click mode was not applied");
+        switches[0]!.click();
         await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
         assert(
           saved.at(-1)?.chatPreviews === false &&
@@ -1414,10 +1531,16 @@ async function checkSettings() {
           button.getAttribute("aria-expanded") === "false",
           "settings button state was not reset",
         );
+        assert(host.shadowRoot!.activeElement === button, "Escape did not restore gear focus");
 
         button.click();
         const reopened = document.querySelector<HTMLElement>(`[${SETTINGS_PANEL_ATTRIBUTE}]`);
         assert(reopened?.isConnected, "settings panel did not reopen");
+        assert(
+          reopened.shadowRoot!.querySelector<HTMLTextAreaElement>('textarea[name="blockedUsers"]')!
+            .value === "someone\nother_user",
+          "reopening lost user exclusions",
+        );
         document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
         assert(!reopened.isConnected, "outside click did not close the settings panel");
       } finally {
@@ -1453,6 +1576,84 @@ async function checkSettings() {
       nav.remove();
     }
   });
+
+  for (const hostname of ["www.twitch.tv", "kick.com"]) {
+    await check(
+      `${hostname}: settings stay anchored and scroll without hiding navigation`,
+      async () => {
+        document.body.replaceChildren();
+        const settings = createSettings({ load: () => ({ chatPreviews: false }), save: () => {} });
+        await settings.ready;
+        const nav = document.createElement("nav");
+        nav.style.cssText = "position:fixed;right:16px;bottom:16px;display:flex";
+        nav.innerHTML =
+          '<button data-a-target="user-menu-toggle">Account</button><button>Get KICKs</button>';
+        document.body.append(nav);
+        const stop = registerSettingsUi(settings, hostname);
+        const frame = () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          );
+        try {
+          const host = document.querySelector<HTMLElement>(`[${SETTINGS_BUTTON_ATTRIBUTE}]`)!;
+          host.shadowRoot!.querySelector<HTMLButtonElement>("button")!.click();
+          const panel = document.querySelector<HTMLElement>(`[${SETTINGS_PANEL_ATTRIBUTE}]`)!;
+          const root = panel.shadowRoot!;
+          const tabs = root.querySelectorAll<HTMLButtonElement>('[role="tab"]');
+          assert(
+            root.querySelector("fieldset")!.disabled,
+            "stored disabled preview state was ignored",
+          );
+          const assertBounds = () => {
+            const rect = panel.getBoundingClientRect();
+            assert(
+              rect.left >= 7 && rect.right <= innerWidth - 7,
+              "settings overflow the viewport width",
+            );
+            assert(
+              rect.top >= 7 && rect.bottom <= innerHeight - 7,
+              "settings overflow the viewport height",
+            );
+          };
+          await frame();
+          assertBounds();
+          tabs[1]!.click();
+          await frame();
+          assertBounds();
+          assert(
+            !root.querySelector<HTMLInputElement>('[role="tabpanel"]:not([hidden]) input')!
+              .disabled,
+            "filters cannot be edited with previews off",
+          );
+          const users = root.querySelector<HTMLTextAreaElement>('textarea[name="blockedUsers"]')!;
+          users.style.height = `${innerHeight}px`;
+          await frame();
+          assertBounds();
+          const content = root.querySelector<HTMLElement>(".panels")!;
+          assert(content.scrollHeight > content.clientHeight, "long settings cannot scroll");
+          content.scrollTop = content.scrollHeight;
+          const card = root.querySelector<HTMLElement>(".card")!.getBoundingClientRect();
+          const close = root.querySelector<HTMLButtonElement>('[aria-label="Close settings"]')!;
+          const note = root.querySelector<HTMLElement>(".note")!.getBoundingClientRect();
+          assert(close.getBoundingClientRect().top >= card.top, "scrolling hid the close button");
+          assert(note.bottom <= card.bottom && note.top >= card.top, "scrolling hid the save note");
+          tabs[0]!.click();
+          await frame();
+          assertBounds();
+          assert(content.scrollTop === 0, "tab switching retained an unrelated scroll offset");
+          close.click();
+          assert(
+            !panel.isConnected &&
+              host.shadowRoot!.activeElement === host.shadowRoot!.querySelector("button"),
+            "close did not dismiss and restore focus",
+          );
+        } finally {
+          stop();
+          nav.remove();
+        }
+      },
+    );
+  }
 }
 
 void checkClipboard();

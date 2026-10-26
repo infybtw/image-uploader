@@ -58,11 +58,19 @@ Each uploaded link also has a clickable image preview above its copy row, in bot
 
 ### Settings
 
-Click the gear button next to the account controls in the Twitch top navigation or next to **Get KICKs** in the Kick header. The panel has three options:
+Click the gear button next to the account controls in the Twitch top navigation or next to **Get KICKs** in the Kick header. The panel includes:
 
 - **Preview links in chat** — show thumbnails below chat messages. Turning it off removes existing previews and stops image/metadata requests for chat links.
 - **Insert the link into chat automatically** — after a successful upload, add the link to the unsent chat message at the caret where you pasted. When insertion succeeds, the upload panel closes after a three-second countdown. This is off by default and never sends the message. If the draft changed, a different field has focus, or the page navigated during the upload, the link is not inserted and the panel stays open.
 - **Clicking a chat preview** — **Open viewer** (default) enlarges the image on the page; **Open website** keeps the normal link behavior and opens the linked page in a new tab. Modifier-clicks always retain normal link behavior.
+
+Under **Hide chat previews** you can exclude:
+
+- **From these usernames** — enter usernames on separate lines or separated by commas. Matching ignores case and accepts an optional `@`. Only previews are hidden; message text and links stay visible.
+- **From these domains** — enter domains (or full URLs) on separate lines or separated by commas. `example.com` also excludes `cdn.example.com`, but not `notexample.com`. The original link and any resolved metadata thumbnail are checked. Excluded original links are skipped before image/metadata requests; a blocked thumbnail discovered in metadata is not loaded. Redirect destinations not exposed by the browser are not a network blocklist.
+- **From chat bots** — on by default, covering known accounts such as Nightbot, StreamElements, Streamlabs, Moobot, Fossabot, Wizebot and BotRix, plus explicit bot badges. Turn it off to show bot previews. It does not guess from names ending in `bot`; add unrecognized/custom bots to the username list. Bot detection uses rendered chat data locally, without external API calls.
+
+Exclusions save automatically and apply to existing and new messages without reloading the page. Empty lists exclude nothing. These filters affect chat thumbnails only, not your upload panel or image editor.
 
 Settings are shared across Twitch and Kick by the extension. The userscript stores them in Tampermonkey storage (`GM_getValue`/`GM_setValue`), which is also shared across sites; if that API is unavailable it falls back to the current site's local storage. No setting is uploaded anywhere.
 
@@ -128,12 +136,12 @@ Pushing a tag `vX.Y.Z` runs the same checks and publishes a GitHub Release with 
 - `imageuploader.meta.js` — userscript update metadata.
 - `SHA256SUMS` — SHA-256 checksums of the ZIP and JavaScript assets.
 
-To publish, set the same new, increasing **stable `X.Y.Z` version** in `package.json` and `extension/manifest.json`, commit and push the changes, then push the matching tag. For version 0.5.0:
+To publish, set the same new, increasing **stable `X.Y.Z` version** in `package.json` and `extension/manifest.json`, commit and push the changes, then push the matching tag. For version 0.6.0:
 
 ```sh
-bun run release:check v0.5.0
-git tag v0.5.0
-git push origin v0.5.0
+bun run release:check v0.6.0
+git tag v0.6.0
+git push origin v0.6.0
 ```
 
 Tag/version mismatches and prerelease tags fail before publishing. Published releases are not overwritten; use a new version and tag for changes. The workflow uses the built-in `GITHUB_TOKEN` with `contents: write` only in the release job; no personal token or extra secrets are required. GitHub Actions must be enabled and repository/organization policy must allow release creation. The repository must be public for anonymous downloads and Tampermonkey updates.
@@ -223,10 +231,10 @@ An internet connection is required to install Bun and locked packages. Building 
 
    WXT rebuilds and generates:
 
-   - `dist/imageuploader-firefox-0.5.0.zip`: unsigned extension.
-   - `dist/imageuploader-0.5.0-sources.zip`: source submission, including the configuration, lockfile, scripts, tests, license, and README.
+   - `dist/imageuploader-firefox-0.6.0.zip`: unsigned extension.
+   - `dist/imageuploader-0.6.0-sources.zip`: source submission, including the configuration, lockfile, scripts, tests, license, and README.
 
-For Chrome, use `bun run build:chrome` or `bun run package:chrome`. Its output is `dist/chrome/`, the timeout is 25 seconds, and the archive is `dist/imageuploader-chrome-0.5.0.zip`. `bun run build` processes both browser targets and the userscript; `bun run package` packages only the browser extensions.
+For Chrome, use `bun run build:chrome` or `bun run package:chrome`. Its output is `dist/chrome/`, the timeout is 25 seconds, and the archive is `dist/imageuploader-chrome-0.6.0.zip`. `bun run build` processes both browser targets and the userscript; `bun run package` packages only the browser extensions.
 
 ### Verification
 

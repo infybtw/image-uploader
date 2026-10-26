@@ -2,8 +2,47 @@ import { getChatPreviewUrl } from "./shared";
 import type { ResolvePreviewPage } from "./preview-page";
 import { bindImageViewer } from "./image-viewer";
 import type { PreviewClick } from "./settings";
+import { createPreviewFilter, type PreviewFilters } from "./preview-filters";
 
 const PREVIEW_ATTRIBUTE = "data-imageuploader-preview";
+const EMPTY_FILTERS: PreviewFilters = { blockedUsers: [], blockedDomains: [], hideBots: false };
+
+function messageAuthor(message: Element): string {
+  const username = message.getAttribute("data-username");
+  if (username) return username.trim();
+  // Prefer explicit author markers over layout fallbacks: badges and moderation
+  // controls can also be buttons with titles, and replies contain other names.
+  for (const selector of [
+    '.chat-author__display-name, [data-a-target="chat-message-username"], .chat-line__username',
+    '[data-testid="chat-message-username"], .chat-entry-username, [data-username]',
+    "button.font-bold",
+  ]) {
+    const author = message.querySelector(selector);
+    if (!author) continue;
+    return (
+      author.getAttribute("data-a-user") ??
+      author.getAttribute("data-username") ??
+      author.closest("[data-a-user]")?.getAttribute("data-a-user") ??
+      author.textContent ??
+      ""
+    ).trim();
+  }
+  return "";
+}
+
+function hasBotBadge(message: Element): boolean {
+  return (
+    Boolean(
+      message.querySelector(
+        '[data-badge="bot" i], [data-badge-type="bot" i], [data-badge-id="bot" i], ' +
+          'img.chat-badge[alt="bot" i], img.chat-badge[title="bot" i], ' +
+          '[data-testid="chat-badge-bot"], [data-is-bot="true"]',
+      ),
+    ) || message.getAttribute("data-is-bot") === "true"
+  );
+}
+
+type PreviewObserver = (() => void) & { refresh(): void };
 
 function messageSelector(hostname: string): string | null {
   if (hostname === "twitch.tv" || hostname.endsWith(".twitch.tv")) {
@@ -20,26 +59,45 @@ export function observeChatPreviews(
   hostname = location.hostname,
   resolvePage?: ResolvePreviewPage,
   getClickAction?: () => PreviewClick,
-): () => void {
+  getFilters: () => PreviewFilters = () => EMPTY_FILTERS,
+): PreviewObserver {
   const selector = messageSelector(hostname) ?? "";
-  if (!selector) return () => {};
-  const states = new WeakMap<Element, { key: string; host: HTMLElement | null }>();
+  if (!selector) return Object.assign(() => {}, { refresh() {} });
+  const states = new WeakMap<
+    Element,
+    { key: string; host: HTMLElement | null; blockedSource: boolean }
+  >();
   const owner = root.ownerDocument ?? (root as Document);
+  let filter = createPreviewFilter(getFilters());
+  let stopped = false;
 
-  function update(message: Element) {
+  function update(message: Element, force = false) {
     if (!root.contains(message) || message.closest("[contenteditable], input, textarea")) return;
     const urls = new Set<string>();
-    for (const link of message.querySelectorAll<HTMLAnchorElement>("a[href]")) {
+    const blocked =
+      filter.filtersAuthors && filter.blocksAuthor(messageAuthor(message), hasBotBadge(message));
+    for (const link of blocked ? [] : message.querySelectorAll<HTMLAnchorElement>("a[href]")) {
       if (link.closest(selector) !== message || link.closest("[contenteditable]")) continue;
       const url = getChatPreviewUrl(link.href);
-      if (url) urls.add(url);
+      if (url && !filter.blocksUrl(url)) urls.add(url);
     }
     const key = [...urls].join("\n");
     const previous = states.get(message);
-    if (previous?.key === key && (!previous.host || previous.host.parentElement === message))
-      return;
+    if (previous?.key === key && (!previous.host || previous.host.parentElement === message)) {
+      if (!force) return;
+      // Typing an exclusion must not reload every unrelated image in the chat.
+      // Revisit removed metadata thumbnails only if a filter might now allow them.
+      if (
+        !previous.blockedSource &&
+        (!previous.host ||
+          [...previous.host.shadowRoot!.querySelectorAll("img")].every(
+            (image) => !filter.blocksUrl(image.src),
+          ))
+      )
+        return;
+    }
     previous?.host?.remove();
-    const state = { key, host: null as HTMLElement | null };
+    const state = { key, host: null as HTMLElement | null, blockedSource: false };
     states.set(message, state);
     if (!urls.size) return;
 
@@ -74,7 +132,10 @@ export function observeChatPreviews(
         }
       };
       const current = () =>
-        states.get(message) === state && host.parentElement === message && root.contains(message);
+        !stopped &&
+        states.get(message) === state &&
+        host.parentElement === message &&
+        root.contains(message);
       image.addEventListener(
         "error",
         () => {
@@ -90,7 +151,9 @@ export function observeChatPreviews(
               // Edited/deleted messages and stopped observers must not restore old previews.
               if (!current()) return;
               const source = imageUrl && getChatPreviewUrl(imageUrl);
-              if (!source || source === url) {
+              const blockedSource = Boolean(source && filter.blocksUrl(source));
+              if (blockedSource) state.blockedSource = true;
+              if (!source || source === url || blockedSource) {
                 remove();
                 return;
               }
@@ -120,8 +183,9 @@ export function observeChatPreviews(
     const messages = new Set<Element>();
     for (const record of records) {
       // Include the target so deleted/edited links also remove stale previews.
-      if (record.target instanceof Element) {
-        const message = record.target.closest(selector);
+      const target = record.target instanceof Element ? record.target : record.target.parentElement;
+      if (target) {
+        const message = target.closest(selector);
         if (message) messages.add(message);
       }
       for (const node of record.addedNodes) {
@@ -133,31 +197,59 @@ export function observeChatPreviews(
   observer.observe(root, {
     subtree: true,
     childList: true,
+    characterData: true,
     attributes: true,
-    attributeFilter: ["href"],
+    attributeFilter: [
+      "href",
+      "data-username",
+      "data-a-user",
+      "data-is-bot",
+      "data-badge",
+      "data-badge-type",
+      "data-badge-id",
+      "title",
+      "alt",
+    ],
   });
   const initial = new Set<Element>();
   if (root instanceof Element) collect(root, initial);
   else for (const message of root.querySelectorAll(selector)) initial.add(message);
   for (const message of initial) update(message);
 
-  return () => {
+  const stop = () => {
+    stopped = true;
     observer.disconnect();
     for (const host of root.querySelectorAll(`[${PREVIEW_ATTRIBUTE}]`)) host.remove();
   };
+  return Object.assign(stop, {
+    refresh() {
+      if (stopped) return;
+      filter = createPreviewFilter(getFilters());
+      for (const message of root.querySelectorAll(selector)) update(message, true);
+      if (root instanceof Element && root.matches(selector)) update(root, true);
+    },
+  });
 }
 
 export function registerChatPreviews(
   resolvePage?: ResolvePreviewPage,
   getClickAction?: () => PreviewClick,
+  getFilters: () => PreviewFilters = () => EMPTY_FILTERS,
+  initiallyEnabled = true,
 ) {
-  let enabled = true;
+  let enabled = initiallyEnabled;
   let mounted = false;
-  let stop: (() => void) | undefined;
+  let stop: PreviewObserver | undefined;
   const start = () => {
     mounted = true;
     if (enabled && !stop) {
-      stop = observeChatPreviews(document, location.hostname, resolvePage, getClickAction);
+      stop = observeChatPreviews(
+        document,
+        location.hostname,
+        resolvePage,
+        getClickAction,
+        getFilters,
+      );
     }
   };
   if (document.readyState === "loading") {
@@ -170,11 +262,20 @@ export function registerChatPreviews(
       enabled = value;
       if (!mounted) return;
       if (enabled && !stop) {
-        stop = observeChatPreviews(document, location.hostname, resolvePage, getClickAction);
+        stop = observeChatPreviews(
+          document,
+          location.hostname,
+          resolvePage,
+          getClickAction,
+          getFilters,
+        );
       } else if (!enabled && stop) {
         stop();
         stop = undefined;
       }
+    },
+    refreshFilters() {
+      stop?.refresh();
     },
   };
 }
