@@ -13,6 +13,7 @@ import {
   SETTINGS_BUTTON_ATTRIBUTE,
   SETTINGS_PANEL_ATTRIBUTE,
 } from "../../src/settings-ui";
+import { MAX_SETTINGS_BACKUP_BYTES } from "../../src/settings-transfer";
 import { checkImageViewer } from "./image-viewer";
 import { checkPreviewFilters } from "./preview-filters";
 import { checkImageEditor, editorFixture } from "./image-editor";
@@ -1389,17 +1390,20 @@ async function checkSettings() {
         const tabs = [...root.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
         const tabPanels = [...root.querySelectorAll<HTMLElement>('[role="tabpanel"]')];
         assert(
-          tabs.length === 2 &&
+          tabs.length === 3 &&
             tabs[0]!.textContent === "General" &&
-            tabs[1]!.textContent === "Filters",
+            tabs[1]!.textContent === "Filters" &&
+            tabs[2]!.textContent === "Backup",
           "settings categories missing",
         );
         assert(
           tabs[0]!.getAttribute("aria-selected") === "true" &&
             tabs[0]!.tabIndex === 0 &&
             tabs[1]!.tabIndex === -1 &&
+            tabs[2]!.tabIndex === -1 &&
             !tabPanels[0]!.hidden &&
-            tabPanels[1]!.hidden,
+            tabPanels[1]!.hidden &&
+            tabPanels[2]!.hidden,
           "General is not the initial tab",
         );
         assert(root.activeElement === tabs[0], "opening did not focus the selected tab");
@@ -1413,11 +1417,12 @@ async function checkSettings() {
         );
         for (const [key, index] of [
           ["ArrowRight", 1],
+          ["ArrowRight", 2],
           ["ArrowRight", 0],
-          ["ArrowLeft", 1],
+          ["ArrowLeft", 2],
           ["Home", 0],
-          ["End", 1],
-          ["ArrowLeft", 0],
+          ["End", 2],
+          ["ArrowLeft", 1],
         ] as const) {
           root.activeElement!.dispatchEvent(
             new KeyboardEvent("keydown", {
@@ -1433,7 +1438,7 @@ async function checkSettings() {
             `${key} did not select its tab`,
           );
           assert(
-            !tabPanels[index]!.hidden && tabPanels[1 - index]!.hidden,
+            tabPanels.every((tabPanel, position) => tabPanel.hidden === (position !== index)),
             `${key} did not switch panels`,
           );
         }
@@ -1571,6 +1576,146 @@ async function checkSettings() {
       );
       const button = host.shadowRoot!.querySelector<HTMLButtonElement>("button")!;
       assert(getComputedStyle(button).color === "rgb(255, 255, 255)", "settings gear is not white");
+    } finally {
+      stop();
+      nav.remove();
+    }
+  });
+
+  await check("settings backup exports and imports valid JSON only after review", async () => {
+    document.body.replaceChildren();
+    const settings = createSettings({
+      load: () => ({ blockedDomains: ["old.example"] }),
+      save: () => {},
+    });
+    await settings.ready;
+    const nav = document.createElement("nav");
+    nav.innerHTML =
+      '<div class="right"><button data-a-target="user-menu-toggle">Account</button></div>';
+    document.body.append(nav);
+    const stop = registerSettingsUi(settings, "www.twitch.tv");
+    const waitFor = async (condition: () => boolean, message: string) => {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if (condition()) return;
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
+      }
+      throw new Error(message);
+    };
+    try {
+      const host = document.querySelector<HTMLElement>(`[${SETTINGS_BUTTON_ATTRIBUTE}]`)!;
+      host.shadowRoot!.querySelector<HTMLButtonElement>("button")!.click();
+      const panel = document.querySelector<HTMLElement>(`[${SETTINGS_PANEL_ATTRIBUTE}]`)!;
+      const root = panel.shadowRoot!;
+      const tabs = [...root.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+      tabs[2]!.click();
+      const status = root.querySelector<HTMLElement>(".status")!;
+      const review = root.querySelector<HTMLElement>(".review")!;
+      const buttons = [...root.querySelectorAll<HTMLButtonElement>(".action")];
+      const button = (label: string) => buttons.find((element) => element.textContent === label)!;
+      const importButton = button("Import settings");
+      const exportButton = button("Export settings");
+      const replaceButton = button("Replace settings");
+      const cancelButton = button("Cancel");
+      const file = root.querySelector<HTMLInputElement>('input[type="file"]')!;
+      assert(
+        status.getAttribute("role") === "status" && status.getAttribute("aria-live") === "polite",
+        "import feedback is not announced",
+      );
+      assert(file.hidden && file.accept.includes("json"), "backup file picker is misconfigured");
+
+      exportButton.click();
+      assert(status.textContent === "Backup file exported.", "export feedback is missing");
+
+      const choose = (text: string, name: string) => {
+        const transfer = new DataTransfer();
+        transfer.items.add(new File([text], name, { type: "application/json" }));
+        file.files = transfer.files;
+        file.dispatchEvent(new Event("change", { bubbles: true }));
+      };
+      choose("{", "broken.json");
+      await waitFor(
+        () => status.textContent!.includes("valid JSON"),
+        "invalid backup was accepted",
+      );
+      assert(
+        review.hidden && settings.get().blockedDomains.join(",") === "old.example",
+        "invalid backup changed settings",
+      );
+
+      choose("x".repeat(MAX_SETTINGS_BACKUP_BYTES + 1), "huge.json");
+      await waitFor(() => status.textContent!.includes("too large"), "oversized backup was read");
+      assert(
+        review.hidden && settings.get().blockedDomains.join(",") === "old.example",
+        "oversized backup changed settings",
+      );
+
+      const backup = JSON.stringify({
+        format: "imageuploader-settings",
+        version: 1,
+        exportedAt: "2026-10-26T20:00:00.000Z",
+        settings: {
+          chatPreviews: false,
+          autoInsert: true,
+          previewClick: "site",
+          blockedUsers: ["@SomeOne"],
+          blockedDomains: ["https://CDN.Example/a"],
+          hideBots: false,
+        },
+      });
+      choose(backup, "twitch-backup.json");
+      await waitFor(() => !review.hidden, "valid backup was not reviewed");
+      assert(review.textContent!.includes("twitch-backup.json"), "backup filename is missing");
+      assert(
+        settings.get().blockedDomains.join(",") === "old.example",
+        "backup replaced settings before confirmation",
+      );
+      assert(root.activeElement === replaceButton, "review did not focus replacement");
+      assert(
+        review.getAttribute("role") === "group" &&
+          replaceButton.getAttribute("aria-describedby") ===
+            "settings-import-review-title settings-import-review-summary",
+        "import review lacks accessible context",
+      );
+      replaceButton.click();
+      assert(
+        settings.get().chatPreviews === false &&
+          settings.get().autoInsert === true &&
+          settings.get().previewClick === "site" &&
+          settings.get().hideBots === false,
+        "backup settings were not applied",
+      );
+      assert(
+        settings.get().blockedUsers.join(",") === "someone",
+        "backup usernames not normalized",
+      );
+      assert(
+        settings.get().blockedDomains.join(",") === "cdn.example",
+        "backup domains not normalized",
+      );
+      assert(
+        review.hidden && String(status.textContent) === "Settings imported.",
+        "import feedback is missing",
+      );
+      assert(root.activeElement === importButton, "import did not restore focus");
+
+      tabs[1]!.click();
+      assert(
+        root.querySelector<HTMLTextAreaElement>('textarea[name="blockedUsers"]')!.value ===
+          "someone",
+        "import did not update the username list",
+      );
+      assert(
+        !root.querySelectorAll<HTMLInputElement>(".switch")[2]!.checked,
+        "import did not update the bot toggle",
+      );
+
+      tabs[2]!.click();
+      choose(backup.replace('"@SomeOne"', '"cancelled"'), "cancel.json");
+      await waitFor(() => !review.hidden, "cancel backup was not reviewed");
+      cancelButton.click();
+      assert(review.hidden && String(status.textContent) === "", "cancel left import feedback");
+      assert(settings.get().blockedUsers.join(",") === "someone", "cancel applied settings");
+      assert(root.activeElement === importButton, "cancel did not restore import focus");
     } finally {
       stop();
       nav.remove();

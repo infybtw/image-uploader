@@ -1,6 +1,12 @@
 import { Settings as SettingsIcon } from "lucide";
 import type { Settings, SettingsController } from "./settings";
 import { normalizeDomainList, normalizeUserList } from "./preview-filters";
+import {
+  MAX_SETTINGS_BACKUP_BYTES,
+  parseSettingsBackup,
+  serializeSettingsBackup,
+  settingsBackupFileName,
+} from "./settings-transfer";
 
 export const SETTINGS_BUTTON_ATTRIBUTE = "data-imageuploader-settings";
 export const SETTINGS_PANEL_ATTRIBUTE = "data-imageuploader-settings-panel";
@@ -161,6 +167,27 @@ function toggleRow(
   return { row, input };
 }
 
+function actionButton(doc: Document, label: string, primary = false) {
+  const button = doc.createElement("button");
+  button.type = "button";
+  button.className = primary ? "action primary" : "action";
+  button.textContent = label;
+  return button;
+}
+
+function describeSettings(settings: Settings): string {
+  const count = (value: number, one: string, many: string) =>
+    `${value} ${value === 1 ? one : many} excluded`;
+  return [
+    settings.chatPreviews ? "previews on" : "previews off",
+    settings.autoInsert ? "auto-insert on" : "auto-insert off",
+    settings.previewClick === "viewer" ? "viewer clicks" : "website clicks",
+    settings.hideBots ? "bot previews hidden" : "bot previews shown",
+    count(settings.blockedUsers.length, "username", "usernames"),
+    count(settings.blockedDomains.length, "domain", "domains"),
+  ].join(" · ");
+}
+
 function buildPanel(doc: Document, settings: SettingsController) {
   const host = doc.createElement("div");
   host.setAttribute(SETTINGS_PANEL_ATTRIBUTE, "");
@@ -221,6 +248,22 @@ function buildPanel(doc: Document, settings: SettingsController) {
     textarea::placeholder { color: #a1a1aa; opacity: 1; }
     textarea:hover { border-color: #71717a; }
     textarea:focus-visible { outline: 2px solid #a78bfa; outline-offset: 1px; }
+    .backup { display: flex; flex-direction: column; gap: 16px; }
+    .backup-copy, .review-copy { display: flex; flex-direction: column; gap: 4px; }
+    .backup-copy strong, .review-copy strong { font-size: 13px; font-weight: 500; }
+    .backup-copy small, .review-copy small { color: #a1a1aa; font-size: 12px; line-height: 1.5; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .action { min-height: 36px; padding: 0 12px; border: 1px solid #52525b; border-radius: 6px;
+      background: #27272a; color: #fafafa; font: inherit; font-weight: 500; cursor: pointer; }
+    .action:hover { background: #3f3f46; border-color: #71717a; }
+    .action:disabled { opacity: .55; cursor: default; }
+    .action.primary { border-color: #9147ff; background: #9147ff; }
+    .action.primary:hover { background: #a970ff; border-color: #a970ff; }
+    .review { display: flex; flex-direction: column; gap: 12px; padding-top: 16px;
+      border-top: 1px solid #3f3f46; }
+    .review-copy strong { overflow-wrap: anywhere; }
+    .status { margin: 0; color: #a1a1aa; font-size: 12px; line-height: 1.5; }
+    .status[data-tone="error"] { color: #fca5a5; }
     .note { flex: 0 0 auto; margin: 0; padding: 0 20px 16px; color: #a1a1aa; font-size: 12px; }
     @media (prefers-reduced-motion: reduce) {
       .switch, .switch::after { transition: none; }
@@ -274,6 +317,7 @@ function buildPanel(doc: Document, settings: SettingsController) {
   for (const [id, label] of [
     ["general", "General"],
     ["filters", "Filters"],
+    ["backup", "Backup"],
   ] as const) {
     const tab = doc.createElement("button");
     const index = tabs.length;
@@ -415,6 +459,144 @@ function buildPanel(doc: Document, settings: SettingsController) {
   previewSettings.append(previews.row, fieldset);
   tabPanels[0]!.append(previewSettings, autoInsert.row);
   tabPanels[1]!.append(bots.row, users.label, domains.label);
+
+  const backup = doc.createElement("section");
+  backup.className = "backup";
+  const backupCopy = doc.createElement("div");
+  backupCopy.className = "backup-copy";
+  const backupTitle = doc.createElement("strong");
+  backupTitle.textContent = "Move settings between browsers";
+  const backupHint = doc.createElement("small");
+  backupHint.id = "settings-backup-hint";
+  backupHint.textContent =
+    "Export a JSON backup, or replace these settings from one. The file includes your excluded usernames and domains, but no chats, drafts, or uploads.";
+  backupCopy.append(backupTitle, backupHint);
+  const actions = doc.createElement("div");
+  actions.className = "actions";
+  const exportButton = actionButton(doc, "Export settings");
+  const importButton = actionButton(doc, "Import settings");
+  importButton.setAttribute("aria-describedby", backupHint.id);
+  actions.append(exportButton, importButton);
+
+  const fileInput = doc.createElement("input");
+  fileInput.type = "file";
+  fileInput.accept = ".json,application/json";
+  fileInput.hidden = true;
+
+  const review = doc.createElement("div");
+  review.className = "review";
+  review.hidden = true;
+  review.setAttribute("role", "group");
+  const reviewCopy = doc.createElement("div");
+  reviewCopy.className = "review-copy";
+  const reviewTitle = doc.createElement("strong");
+  reviewTitle.id = "settings-import-review-title";
+  const reviewSummary = doc.createElement("small");
+  reviewSummary.id = "settings-import-review-summary";
+  reviewCopy.append(reviewTitle, reviewSummary);
+  review.setAttribute("aria-labelledby", reviewTitle.id);
+  review.setAttribute("aria-describedby", reviewSummary.id);
+  const reviewActions = doc.createElement("div");
+  reviewActions.className = "actions";
+  const replaceButton = actionButton(doc, "Replace settings", true);
+  replaceButton.setAttribute("aria-describedby", `${reviewTitle.id} ${reviewSummary.id}`);
+  const cancelButton = actionButton(doc, "Cancel");
+  reviewActions.append(replaceButton, cancelButton);
+  review.append(reviewCopy, reviewActions);
+
+  const status = doc.createElement("p");
+  status.className = "status";
+  status.setAttribute("role", "status");
+  status.setAttribute("aria-live", "polite");
+
+  backup.append(backupCopy, actions, review, status, fileInput);
+  tabPanels[2]!.append(backup);
+
+  let pendingImport: Settings | null = null;
+  const setStatus = (message: string, tone: "info" | "error" = "info") => {
+    status.textContent = message;
+    status.dataset.tone = tone;
+  };
+  const clearReview = (focusImport = false) => {
+    pendingImport = null;
+    review.hidden = true;
+    if (focusImport) importButton.focus({ preventScroll: true });
+  };
+  exportButton.addEventListener("click", () => {
+    try {
+      const text = serializeSettingsBackup(settings.get());
+      const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+      const anchor = doc.createElement("a");
+      anchor.href = url;
+      anchor.download = settingsBackupFileName();
+      anchor.style.display = "none";
+      doc.documentElement.append(anchor);
+      try {
+        anchor.click();
+      } finally {
+        anchor.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      }
+      setStatus("Backup file exported.");
+    } catch (error) {
+      console.error("[ImageUploader] Could not export settings", error);
+      setStatus("Could not export settings.", "error");
+    }
+  });
+  importButton.addEventListener("click", () => {
+    setStatus("");
+    fileInput.click();
+  });
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files?.[0];
+    fileInput.value = "";
+    if (!file) return;
+    setStatus("");
+    clearReview();
+    if (file.size > MAX_SETTINGS_BACKUP_BYTES) {
+      setStatus("This file is too large to be a settings backup.", "error");
+      importButton.focus({ preventScroll: true });
+      return;
+    }
+    importButton.disabled = true;
+    let focusImportAfterRead = false;
+    void file
+      .text()
+      .then((text) => {
+        if (!host.isConnected) return;
+        const result = parseSettingsBackup(text);
+        if (!result.ok) {
+          setStatus(result.error, "error");
+          focusImportAfterRead = true;
+          return;
+        }
+        pendingImport = result.settings;
+        reviewTitle.textContent = `Replace settings from “${file.name || "backup"}”?`;
+        reviewSummary.textContent = describeSettings(result.settings);
+        review.hidden = false;
+        replaceButton.focus({ preventScroll: true });
+      })
+      .catch(() => {
+        if (!host.isConnected) return;
+        setStatus("Could not read this file.", "error");
+        focusImportAfterRead = true;
+      })
+      .finally(() => {
+        importButton.disabled = false;
+        if (focusImportAfterRead) importButton.focus({ preventScroll: true });
+      });
+  });
+  replaceButton.addEventListener("click", () => {
+    if (!pendingImport) return;
+    settings.update(pendingImport);
+    clearReview();
+    setStatus("Settings imported.");
+    importButton.focus({ preventScroll: true });
+  });
+  cancelButton.addEventListener("click", () => {
+    clearReview(true);
+    setStatus("");
+  });
 
   const note = doc.createElement("p");
   note.className = "note";

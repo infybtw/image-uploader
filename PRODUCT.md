@@ -26,7 +26,7 @@ ImageUploader combines clipboard uploads through Twir Uploader, inline chat-link
 - Pasting an image into an editable field on a supported site immediately starts an upload. Normal text pastes remain unchanged.
 - Completed links appear above a recognized chat input, with a floating notification as the fallback. Users can copy links and manually send their message.
 - Optional automatic insertion adds a link to an unsent draft; it is off by default and never sends messages.
-- A navigation gear opens settings. Chat previews can be disabled, opened in an on-page viewer or as website links, and excluded by username, domain, or known bot account. Previews from known bots are hidden by default.
+- A navigation gear opens settings. Chat previews can be disabled, opened in an on-page viewer or as website links, and excluded by username, domain, or known bot account. Previews from known bots are hidden by default. Settings can be exported to and imported from a local JSON backup; an import replaces all settings only after confirmation.
 - Upload thumbnails open an editor with crop, draw, rotate, horizontal flip, undo/redo, and reset. Uploading an edited image replaces its displayed link only after success.
 - The interface must coexist with host-site navigation, themes, chat input replacement, and chat remounting without disrupting messages, drafts, or normal link behavior.
 
