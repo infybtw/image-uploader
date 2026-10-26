@@ -72,17 +72,19 @@ export async function checkPreviewFilters(check: Check) {
       async () => {
         const settings = createSettings({ load: () => ({ hideBots: true }), save: () => {} });
         await settings.ready;
-        for (const [name, badge, hidden] of [
-          ["Nightbot", false, true],
-          ["StreamElements", false, true],
-          ["CustomService", true, true],
-          ["FriendlyRobot", false, false],
+        for (const [name, badges, hidden] of [
+          ["Nightbot", [], true],
+          ["CustomService", ["Chat Bot"], true],
+          ["PromoBot", ["Subscriber", "Bot badge"], true],
+          ["LoyalViewer", ["Subscriber"], false],
+          ["FriendlyRobot", [], false],
         ] as const) {
           const { root, message } = fixture(hostname, name);
-          if (badge) {
+          for (const [index, label] of badges.entries()) {
             const image = document.createElement("img");
             image.className = "chat-badge";
-            image.alt = "Bot";
+            if (index % 2) image.title = label;
+            else image.alt = label;
             message.prepend(image);
           }
           const stop = observeChatPreviews(root, hostname, undefined, undefined, () =>

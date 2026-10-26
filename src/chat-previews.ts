@@ -30,16 +30,46 @@ function messageAuthor(message: Element): string {
   return "";
 }
 
-function hasBotBadge(message: Element): boolean {
+const BADGE_SELECTOR = [
+  ".chat-badge",
+  '[data-a-target="chat-badge"]',
+  '[data-test-selector="chat-badge"]',
+  '[data-testid="chat-badge"]',
+  "[data-badge]",
+].join(", ");
+// Twitch labels its official badge "Chat Bot"; other clients may omit the prefix.
+const BOT_BADGE_LABEL = /^(?:chat\s+)?bot(?:\s+badge)?$/i;
+
+function badgeLabel(element: Element): string {
   return (
-    Boolean(
-      message.querySelector(
-        '[data-badge="bot" i], [data-badge-type="bot" i], [data-badge-id="bot" i], ' +
-          'img.chat-badge[alt="bot" i], img.chat-badge[title="bot" i], ' +
-          '[data-testid="chat-badge-bot"], [data-is-bot="true"]',
-      ),
-    ) || message.getAttribute("data-is-bot") === "true"
-  );
+    element.getAttribute("alt") ??
+    element.getAttribute("title") ??
+    element.getAttribute("aria-label") ??
+    ""
+  ).trim();
+}
+
+function hasBotBadge(message: Element): boolean {
+  if (message.getAttribute("data-is-bot") === "true") return true;
+  if (
+    message.querySelector(
+      '[data-is-bot="true"], [data-testid="chat-badge-bot"], ' +
+        '[data-badge="bot" i], [data-badge-type="bot" i], [data-badge-id="bot" i]',
+    )
+  )
+    return true;
+  for (const badge of message.querySelectorAll(BADGE_SELECTOR)) {
+    const labels = [badge, ...badge.querySelectorAll("[alt], [title], [aria-label]")].flatMap(
+      (element) => {
+        const label = badgeLabel(element);
+        return label ? [label] : [];
+      },
+    );
+    if (labels.some((label) => BOT_BADGE_LABEL.test(label))) return true;
+    const image = badge.matches("img") ? badge : badge.querySelector("img");
+    if (/bot-badge/i.test(image?.getAttribute("src") ?? "")) return true;
+  }
+  return false;
 }
 
 type PreviewObserver = (() => void) & { refresh(): void };
