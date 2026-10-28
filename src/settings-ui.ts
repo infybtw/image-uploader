@@ -27,8 +27,31 @@ const TWITCH_CONTAINERS = [
   'nav[aria-label="Top navigation bar" i]',
   "#top-nav",
 ];
-const KICK_ANCHORS = ['[data-testid="navbar-display-language"]'];
+// The authenticated Kick header renders the KICKs balance instead of the
+// "Get KICKs" label, so the test id is the stable anchor. The text match below
+// still covers older and logged-out variants.
+const KICK_ANCHORS = [
+  '[data-testid="kicks-top-nav"]',
+  '[data-testid="navbar-drops"]',
+  '[data-testid="navbar-display-language"]',
+  '[data-testid="navbar-account"]',
+];
 const KICK_CONTAINERS = ['nav[aria-label="Top navigation bar" i]', "header", "nav"];
+const LEAF_TAGS = new Set([
+  "A",
+  "BUTTON",
+  "CANVAS",
+  "IFRAME",
+  "IMG",
+  "INPUT",
+  "PICTURE",
+  "SELECT",
+  "SVG",
+  "TEXTAREA",
+  "VIDEO",
+]);
+
+type Anchor = { parent: HTMLElement; before: Element | null; precise: boolean };
 
 function siteFor(hostname: string): Site | null {
   if (hostname === "twitch.tv" || hostname.endsWith(".twitch.tv")) return "twitch";
@@ -36,15 +59,29 @@ function siteFor(hostname: string): Site | null {
   return null;
 }
 
-function visible<T extends Element>(selectors: string, doc: Document): T | null {
-  const matches = [...doc.querySelectorAll<T>(selectors)];
-  return matches.find((element) => element.getClientRects().length > 0) ?? matches.at(-1) ?? null;
+function isVisible(element: Element): boolean {
+  return element.getClientRects().length > 0;
 }
 
-function findAnchor(
-  doc: Document,
-  site: Site,
-): { parent: HTMLElement; before: Element | null } | null {
+function visible<T extends Element>(selectors: string, doc: Document): T | null {
+  return [...doc.querySelectorAll<T>(selectors)].find(isVisible) ?? null;
+}
+
+// Sites hydrate their navigation after the content script starts. Until an
+// account/currency control exists, append to the rightmost wrapper rather than
+// the navigation itself: an extra flex child of a `justify-between` navbar
+// pushes the whole account group into the centered search field.
+function rightmostGroup(container: HTMLElement): HTMLElement {
+  let parent = container;
+  for (let depth = 0; depth < 2; depth++) {
+    const last = [...parent.children].filter(isVisible).at(-1);
+    if (!last || LEAF_TAGS.has(last.tagName)) break;
+    parent = last as HTMLElement;
+  }
+  return parent;
+}
+
+function findAnchor(doc: Document, site: Site): Anchor | null {
   if (site === "twitch") {
     // Twitch nests the avatar toggle inside a balloon wrapper. Insert before the
     // whole account control so the gear becomes its own top-navigation item.
@@ -52,29 +89,32 @@ function findAnchor(
     const account = userMenu?.closest<HTMLElement>(
       '[data-a-target="dropdown-down"], [data-a-target="dropdown-up"]',
     );
-    if (account?.parentElement) return { parent: account.parentElement, before: account };
+    if (account?.parentElement)
+      return { parent: account.parentElement, before: account, precise: true };
     for (const selector of TWITCH_ANCHORS) {
       const element = visible<HTMLElement>(selector, doc);
-      if (element?.parentElement) return { parent: element.parentElement, before: element };
+      if (element?.parentElement)
+        return { parent: element.parentElement, before: element, precise: true };
     }
     for (const selector of TWITCH_CONTAINERS) {
       const element = visible<HTMLElement>(selector, doc);
-      if (element) return { parent: element, before: null };
+      if (element) return { parent: rightmostGroup(element), before: null, precise: false };
     }
     return null;
   }
-  const kicks = [
+  const getKicks = [
     ...doc.querySelectorAll<HTMLElement>("nav button, nav a, header button, header a"),
-  ].filter((element) => /get\s*kicks/i.test(element.textContent ?? ""));
-  const getKicks = kicks.find((element) => element.getClientRects().length > 0) ?? kicks[0] ?? null;
-  if (getKicks?.parentElement) return { parent: getKicks.parentElement, before: getKicks };
+  ].find((element) => isVisible(element) && /get\s*kicks/i.test(element.textContent ?? ""));
+  if (getKicks?.parentElement)
+    return { parent: getKicks.parentElement, before: getKicks, precise: true };
   for (const selector of KICK_ANCHORS) {
     const element = visible<HTMLElement>(selector, doc);
-    if (element?.parentElement) return { parent: element.parentElement, before: element };
+    if (element?.parentElement)
+      return { parent: element.parentElement, before: element, precise: true };
   }
   for (const selector of KICK_CONTAINERS) {
     const element = visible<HTMLElement>(selector, doc);
-    if (element) return { parent: element, before: null };
+    if (element) return { parent: rightmostGroup(element), before: null, precise: false };
   }
   return null;
 }
@@ -623,16 +663,45 @@ function mount(doc: Document, site: Site, settings: SettingsController) {
   let button: HTMLButtonElement | null = null;
   let panel: ReturnType<typeof buildPanel> | null = null;
   let closePanel: (restoreFocus?: boolean) => void = () => {};
+  let placedParent: HTMLElement | null = null;
+  let placedBefore: Element | null = null;
+  let placedPrecisely = false;
+
+  const placementIsCurrent = () => {
+    if (!buttonHost?.isConnected || !placedParent || buttonHost.parentElement !== placedParent)
+      return false;
+    return placedBefore
+      ? placedBefore.isConnected && buttonHost.nextElementSibling === placedBefore
+      : buttonHost === placedParent.lastElementChild;
+  };
 
   const inject = () => {
-    if (buttonHost?.isConnected) return;
+    // A specific anchor only needs to be checked again when the site replaces
+    // it. Generic fallbacks keep looking for a better anchor on every mutation.
+    if (buttonHost?.isConnected && placedPrecisely && placementIsCurrent()) return;
     const anchor = findAnchor(doc, site);
     if (!anchor) return;
-    buttonHost?.remove();
-    const created = createButton(doc, site, toggle);
-    buttonHost = created.host;
-    button = created.button;
-    if (panel) button.setAttribute("aria-expanded", "true");
+    // Do not downgrade an intact precise placement when a re-render briefly
+    // hides the real anchor. The observer will retry on the next mutation.
+    if (!anchor.precise && buttonHost?.isConnected && placedPrecisely) return;
+    if (
+      buttonHost?.isConnected &&
+      anchor.precise === placedPrecisely &&
+      buttonHost.parentElement === anchor.parent &&
+      (anchor.before
+        ? buttonHost.nextElementSibling === anchor.before
+        : buttonHost === anchor.parent.lastElementChild)
+    )
+      return;
+    if (!buttonHost) {
+      const created = createButton(doc, site, toggle);
+      buttonHost = created.host;
+      button = created.button;
+      if (panel) button.setAttribute("aria-expanded", "true");
+    }
+    placedParent = anchor.parent;
+    placedBefore = anchor.before;
+    placedPrecisely = anchor.precise;
     anchor.parent.insertBefore(buttonHost, anchor.before);
   };
 

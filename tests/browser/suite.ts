@@ -1632,6 +1632,51 @@ async function checkSettings() {
     }
   });
 
+  await check(
+    "Kick: settings button joins a hydrated header without displacing its groups",
+    async () => {
+      document.body.replaceChildren();
+      const settings = createSettings({ load: () => ({}), save: () => {} });
+      await settings.ready;
+      const nav = document.createElement("nav");
+      nav.style.cssText = "display:flex;justify-content:space-between";
+      nav.innerHTML = '<a href="/">Logo</a><div class="right"><button>Drops</button></div>';
+      document.body.append(nav);
+      const stop = registerSettingsUi(settings, "kick.com");
+      const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      try {
+        const host = document.querySelector<HTMLElement>(`[${SETTINGS_BUTTON_ATTRIBUTE}]`)!;
+        const right = nav.querySelector<HTMLElement>(".right")!;
+        assert(host.shadowRoot, "settings button missing from the hydrated Kick header");
+        assert(
+          host.parentElement === right,
+          "settings button became a navigation child and could displace the header groups",
+        );
+
+        // Kick hydrates the authenticated controls after the content script.
+        // The balance variant has no "Get KICKs" text, so use the real test id.
+        const kicks = document.createElement("button");
+        kicks.dataset.testid = "kicks-top-nav";
+        kicks.textContent = "1,200";
+        right.prepend(kicks);
+        await frame();
+        await frame();
+        assert(
+          host.nextElementSibling === kicks,
+          "settings button did not re-anchor after hydration",
+        );
+        assert(host.parentElement === right, "settings button left the account group");
+        assert(
+          nav.firstElementChild?.tagName === "A" && right.lastElementChild?.textContent === "Drops",
+          "settings button displaced the Kick navigation groups",
+        );
+      } finally {
+        stop();
+        nav.remove();
+      }
+    },
+  );
+
   await check("settings backup exports and imports valid JSON only after review", async () => {
     document.body.replaceChildren();
     const settings = createSettings({
