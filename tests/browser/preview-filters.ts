@@ -6,8 +6,12 @@ function assert(value: unknown, message: string): asserts value {
   if (!value) throw new Error(message);
 }
 const tick = () => new Promise<void>((resolve) => window.setTimeout(resolve, 0));
-const preview = (message: Element) =>
-  message.querySelector<HTMLElement>("[data-imageuploader-preview]");
+const preview = (message: Element) => {
+  const sibling = message.nextElementSibling;
+  if (sibling?.matches("[data-imageuploader-preview]")) return sibling as HTMLElement;
+  const row = message.closest(".seventv-message");
+  return row?.querySelector<HTMLElement>(":scope > [data-imageuploader-preview]") ?? null;
+};
 
 function fixture(hostname: string, username: string) {
   const kick = hostname === "kick.com";

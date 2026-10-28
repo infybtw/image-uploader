@@ -3,6 +3,7 @@ import type { ResolvePreviewPage } from "./preview-page";
 import { bindImageViewer } from "./image-viewer";
 import type { PreviewClick } from "./settings";
 import { createPreviewFilter, type PreviewFilters } from "./preview-filters";
+import { isPreviewMounted, mountPreview } from "./chat-preview-placement";
 
 const PREVIEW_ATTRIBUTE = "data-imageuploader-preview";
 const EMPTY_FILTERS: PreviewFilters = { blockedUsers: [], blockedDomains: [], hideBots: false };
@@ -15,6 +16,7 @@ function messageAuthor(message: Element): string {
   for (const selector of [
     '.chat-author__display-name, [data-a-target="chat-message-username"], .chat-line__username',
     '[data-testid="chat-message-username"], .chat-entry-username, [data-username]',
+    ".seventv-chat-user-username",
     "button.font-bold",
   ]) {
     const author = message.querySelector(selector);
@@ -32,6 +34,7 @@ function messageAuthor(message: Element): string {
 
 const BADGE_SELECTOR = [
   ".chat-badge",
+  ".seventv-chat-badge",
   '[data-a-target="chat-badge"]',
   '[data-test-selector="chat-badge"]',
   '[data-testid="chat-badge"]',
@@ -76,7 +79,7 @@ type PreviewObserver = (() => void) & { refresh(): void };
 
 function messageSelector(hostname: string): string | null {
   if (hostname === "twitch.tv" || hostname.endsWith(".twitch.tv")) {
-    return '.chat-line__message, [data-a-target="chat-line-message"]';
+    return '.chat-line__message, [data-a-target="chat-line-message"], .seventv-user-message';
   }
   if (hostname === "kick.com" || hostname.endsWith(".kick.com")) {
     return "#chatroom-messages .chat-entry";
@@ -97,6 +100,8 @@ export function observeChatPreviews(
     Element,
     { key: string; host: HTMLElement | null; blockedSource: boolean }
   >();
+  const hostMessages = new WeakMap<HTMLElement, Element>();
+  const hosts = new Set<HTMLElement>();
   const owner = root.ownerDocument ?? (root as Document);
   let filter = createPreviewFilter(getFilters());
   let stopped = false;
@@ -113,7 +118,9 @@ export function observeChatPreviews(
     }
     const key = [...urls].join("\n");
     const previous = states.get(message);
-    if (previous?.key === key && (!previous.host || previous.host.parentElement === message)) {
+    if (previous?.key === key) {
+      if (previous.host && !isPreviewMounted(previous.host, message))
+        mountPreview(previous.host, message);
       if (!force) return;
       // Typing an exclusion must not reload every unrelated image in the chat.
       // Revisit removed metadata thumbnails only if a filter might now allow them.
@@ -127,13 +134,15 @@ export function observeChatPreviews(
         return;
     }
     previous?.host?.remove();
+    if (previous?.host) hosts.delete(previous.host);
     const state = { key, host: null as HTMLElement | null, blockedSource: false };
     states.set(message, state);
     if (!urls.size) return;
 
     const host = owner.createElement("div");
     host.setAttribute(PREVIEW_ATTRIBUTE, "");
-    host.style.cssText = "all:initial;display:block;max-width:100%;margin-top:6px";
+    host.style.cssText =
+      "all:initial;display:block;box-sizing:border-box;width:100%;max-width:100%;margin-top:6px";
     const shadow = host.attachShadow({ mode: "open" });
     const style = owner.createElement("style");
     style.textContent = `
@@ -159,12 +168,15 @@ export function observeChatPreviews(
         if (!shadow.querySelector("a")) {
           host.remove();
           state.host = null; // Do not retry broken links on every chat mutation.
+          hosts.delete(host);
+          hostMessages.delete(host);
         }
       };
       const current = () =>
         !stopped &&
         states.get(message) === state &&
-        host.parentElement === message &&
+        state.host === host &&
+        isPreviewMounted(host, message) &&
         root.contains(message);
       image.addEventListener(
         "error",
@@ -199,14 +211,34 @@ export function observeChatPreviews(
       link.append(image);
       shadow.append(link);
     }
+    if (!mountPreview(host, message)) {
+      host.remove();
+      return;
+    }
     state.host = host;
-    message.append(host);
+    hosts.add(host);
+    hostMessages.set(host, message);
   }
 
   function collect(element: Element, messages: Set<Element>) {
     const closest = element.closest(selector);
     if (closest) messages.add(closest);
     for (const message of element.querySelectorAll(selector)) messages.add(message);
+  }
+
+  function removePreview(message: Element) {
+    const state = states.get(message);
+    if (state?.host) {
+      state.host.remove();
+      hosts.delete(state.host);
+      hostMessages.delete(state.host);
+    }
+    states.delete(message);
+  }
+
+  function removePreviews(element: Element) {
+    if (element.matches(selector)) removePreview(element);
+    for (const message of element.querySelectorAll(selector)) removePreview(message);
   }
 
   const observer = new MutationObserver((records) => {
@@ -220,6 +252,16 @@ export function observeChatPreviews(
       }
       for (const node of record.addedNodes) {
         if (node instanceof Element) collect(node, messages);
+      }
+      for (const node of record.removedNodes) {
+        if (!(node instanceof Element)) continue;
+        if (node.matches(`[${PREVIEW_ATTRIBUTE}]`)) {
+          const message = hostMessages.get(node as HTMLElement);
+          if (message) messages.add(message);
+          continue;
+        }
+        // Removed messages no longer take their preview with them.
+        if (!root.contains(node)) removePreviews(node);
       }
     }
     for (const message of messages) update(message);
@@ -249,7 +291,8 @@ export function observeChatPreviews(
   const stop = () => {
     stopped = true;
     observer.disconnect();
-    for (const host of root.querySelectorAll(`[${PREVIEW_ATTRIBUTE}]`)) host.remove();
+    for (const host of hosts) host.remove();
+    hosts.clear();
   };
   return Object.assign(stop, {
     refresh() {

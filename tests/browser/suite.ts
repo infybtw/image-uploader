@@ -102,7 +102,10 @@ function previewChat(hostname = "www.twitch.tv") {
 }
 
 function previewHost(message: Element) {
-  return message.querySelector<HTMLElement>("[data-imageuploader-preview]");
+  const sibling = message.nextElementSibling;
+  if (sibling?.matches("[data-imageuploader-preview]")) return sibling as HTMLElement;
+  const row = message.closest(".seventv-message");
+  return row?.querySelector<HTMLElement>(":scope > [data-imageuploader-preview]") ?? null;
 }
 
 test("PicDrisnya post metadata resolves to its image, not the HTML page", () => {
@@ -168,7 +171,7 @@ for (const hostname of ["www.twitch.tv", "kick.com"]) {
     const stop = observeChatPreviews(root, hostname);
     try {
       const host = previewHost(message);
-      assert(host && message.lastElementChild === host, "preview not below message");
+      assert(host && message.nextElementSibling === host, "preview not below message");
       assert(message.firstElementChild === link && link.textContent === link.href, "link changed");
       const image = host.shadowRoot!.querySelector("img")!;
       assert(image.src === link.href, "wrong image source");
@@ -185,6 +188,39 @@ for (const hostname of ["www.twitch.tv", "kick.com"]) {
     assert(!previewHost(message), "cleanup left a preview behind");
   });
 }
+
+test("7TV messages mount previews outside the moderation slider", () => {
+  const root = document.createElement("div");
+  const row = document.createElement("div");
+  row.className = "seventv-message";
+  const slider = document.createElement("div");
+  slider.className = "seventv-ban-slider";
+  const wrapped = document.createElement("div");
+  wrapped.className = "wrapped";
+  const message = document.createElement("span");
+  message.className = "seventv-user-message";
+  const author = document.createElement("span");
+  author.className = "seventv-chat-user-username";
+  author.textContent = "viewer";
+  const link = document.createElement("a");
+  link.href = "https://twir.app/u/7TVRow";
+  link.textContent = link.href;
+  message.append(author, link);
+  wrapped.append(message);
+  slider.append(wrapped);
+  row.append(slider);
+  root.append(row);
+  const stop = observeChatPreviews(root, "twitch.tv");
+  try {
+    const host = previewHost(message);
+    assert(host && host.parentElement === row, "preview not attached to the 7TV row");
+    assert(!slider.contains(host), "preview remained inside the moderation slider");
+    assert(row.lastElementChild === host, "preview not outside the message content");
+  } finally {
+    stop();
+  }
+  assert(!root.querySelector("[data-imageuploader-preview]"), "cleanup left a 7TV preview");
+});
 
 test("previews ignore unsafe URLs, outside-chat links, editors and lookalike sites", () => {
   const { root, message, link } = previewChat();
@@ -774,17 +810,31 @@ async function checkChatPreviews() {
         root.append(replacement.message);
         await tick();
         assert(previewHost(replacement.message), "remounted chat ignored");
-        replacement.message.querySelector("[data-imageuploader-preview]")!.remove();
+        const restored = previewHost(replacement.message)!;
+        restored.remove();
         await tick();
+        assert(previewHost(replacement.message) === restored, "removed preview not restored");
         assert(
-          replacement.message.querySelectorAll("[data-imageuploader-preview]").length === 1,
-          "removed preview not restored exactly once",
+          root.querySelectorAll("[data-imageuploader-preview]").length === 1,
+          "removed preview was duplicated",
         );
       } finally {
         stop();
       }
     },
   );
+  await check("removing a message removes its detached preview", async () => {
+    const { root, message } = previewChat();
+    const stop = observeChatPreviews(root, "twitch.tv");
+    try {
+      assert(previewHost(message), "initial preview missing");
+      message.remove();
+      await tick();
+      assert(!root.querySelector("[data-imageuploader-preview]"), "message removal left a preview");
+    } finally {
+      stop();
+    }
+  });
   await check("failed images disappear without retries or removing the original link", async () => {
     const { root, message, link } = previewChat();
     const stop = observeChatPreviews(root, "twitch.tv");
