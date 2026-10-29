@@ -14,9 +14,27 @@ test("both browser builds produce self-contained extension directories", async (
       expect((await readdir(outdir)).sort()).toEqual([
         "background.js",
         "content-scripts",
+        "icon",
         "manifest.json",
       ]);
       const manifest = await Bun.file(join(outdir, "manifest.json")).json();
+      expect(manifest.icons).toEqual(
+        target === "firefox"
+          ? {
+              16: "icon/theme.svg",
+              32: "icon/theme.svg",
+              48: "icon/theme.svg",
+              96: "icon/theme.svg",
+              128: "icon/theme.svg",
+            }
+          : {
+              16: "icon/16.png",
+              32: "icon/32.png",
+              48: "icon/48.png",
+              96: "icon/96.png",
+              128: "icon/128.png",
+            },
+      );
       const background = await Bun.file(join(outdir, "background.js")).text();
       const content = await Bun.file(join(outdir, "content-scripts/content.js")).text();
       expect(manifest.name).toBe(commonManifest.name);

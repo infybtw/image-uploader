@@ -16,6 +16,13 @@ test("WXT packages each browser and includes rebuildable Firefox sources", async
       expect(Object.keys(entries).sort()).toEqual([
         "background.js",
         "content-scripts/content.js",
+        "icon/128.png",
+        "icon/16.png",
+        "icon/32.png",
+        "icon/48.png",
+        "icon/96.png",
+        "icon/icon.svg",
+        "icon/theme.svg",
         "manifest.json",
       ]);
       for (const [name, content] of Object.entries(entries)) {
@@ -35,6 +42,8 @@ test("WXT packages each browser and includes rebuildable Firefox sources", async
           "tsconfig.json",
           "wxt.config.ts",
           "src/entrypoints/content.ts",
+          "public/icon/icon.svg",
+          "public/icon/theme.svg",
           "tests/build.test.ts",
           "tests/package.test.ts",
           "extension/manifest.json",

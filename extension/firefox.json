@@ -1,4 +1,11 @@
 {
+  "icons": {
+    "16": "icon/theme.svg",
+    "32": "icon/theme.svg",
+    "48": "icon/theme.svg",
+    "96": "icon/theme.svg",
+    "128": "icon/theme.svg"
+  },
   "browser_specific_settings": {
     "gecko": {
       "id": "twir-paste@imageuploader.local",

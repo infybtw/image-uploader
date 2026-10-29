@@ -26,6 +26,7 @@ export default defineConfig({
       "src",
       "scripts",
       "tests",
+      "public",
       "extension",
       "wxt.config.ts",
       "package.json",

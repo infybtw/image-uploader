@@ -1431,7 +1431,7 @@ async function checkSettings() {
         const button = host.shadowRoot!.querySelector<HTMLButtonElement>("button")!;
         assert(
           getComputedStyle(button).color === "rgb(255, 255, 255)",
-          "settings gear is not white",
+          "settings icon is not white",
         );
         button.click();
         const panel = document.querySelector<HTMLElement>(`[${SETTINGS_PANEL_ATTRIBUTE}]`);
@@ -1625,7 +1625,7 @@ async function checkSettings() {
         "settings button is in the wrong group",
       );
       const button = host.shadowRoot!.querySelector<HTMLButtonElement>("button")!;
-      assert(getComputedStyle(button).color === "rgb(255, 255, 255)", "settings gear is not white");
+      assert(getComputedStyle(button).color === "rgb(255, 255, 255)", "settings icon is not white");
     } finally {
       stop();
       nav.remove();
