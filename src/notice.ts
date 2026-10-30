@@ -3,6 +3,7 @@ import { mountNotice } from "./notice-placement";
 import { getUploaderImageUrl } from "./shared";
 import { bindImageViewer } from "./image-viewer";
 import { openImageEditor } from "./image-editor";
+import { BRAND_NAME } from "./brand";
 
 const COPY_DISMISS_DELAY = 3_000;
 let latestNoticeId = 0;
@@ -80,10 +81,10 @@ export function createNotice(
   };
   const card = document.createElement("section");
   card.className = "card";
-  card.setAttribute("aria-label", "Image Uploader");
+  card.setAttribute("aria-label", BRAND_NAME);
   const header = document.createElement("header");
   const title = document.createElement("strong");
-  title.textContent = "Image Uploader";
+  title.textContent = BRAND_NAME;
   const close = document.createElement("button");
   close.type = "button";
   close.textContent = "×";

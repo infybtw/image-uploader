@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Image uploader for Kick/Twitch",
+  "name": "Viewer Companion",
   "version": "0.6.7",
-  "description": "Upload clipboard images to Twir on Twitch and Kick. Copy the link from the upload panel. No sign-in required.",
+  "description": "Your Twitch and Kick chat companion: image uploads, inline previews, a full-screen viewer, and a built-in image editor.",
   "permissions": ["storage"],
   "host_permissions": ["https://*/*", "http://*/*"]
 }

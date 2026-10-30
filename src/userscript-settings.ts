@@ -24,7 +24,7 @@ export function createUserscriptSettingsStore(): SettingsStore {
         if (typeof GM_setValue !== "undefined") GM_setValue(SETTINGS_KEY, settings);
         else localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
       } catch (error) {
-        console.error("[ImageUploader] Could not save settings", error);
+        console.error("[Viewer Companion] Could not save settings", error);
       }
     },
   };

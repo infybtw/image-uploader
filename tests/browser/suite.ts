@@ -1447,6 +1447,16 @@ async function checkSettings() {
         assert(host.getAttribute(SETTINGS_BUTTON_ATTRIBUTE) === "twitch", "wrong site styling");
 
         const button = host.shadowRoot!.querySelector<HTMLButtonElement>("button")!;
+        assert(button.title === "Viewer Companion settings", "old settings branding remains");
+        assert(
+          button.getAttribute("aria-label") === "Viewer Companion settings",
+          "settings accessible name was not rebranded",
+        );
+        assert(
+          button.querySelector("svg")?.getAttribute("viewBox") === "0 0 32 32" &&
+            button.querySelectorAll("svg path").length === 1,
+          "VC monogram is missing",
+        );
         assert(
           getComputedStyle(button).color === "rgb(255, 255, 255)",
           "settings icon is not white",
@@ -1455,6 +1465,10 @@ async function checkSettings() {
         const panel = document.querySelector<HTMLElement>(`[${SETTINGS_PANEL_ATTRIBUTE}]`);
         assert(panel?.shadowRoot, "settings panel did not open");
         const root = panel.shadowRoot!;
+        assert(
+          root.querySelector("header strong")?.textContent === "Viewer Companion",
+          "settings title was not rebranded",
+        );
         const tabs = [...root.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
         const tabPanels = [...root.querySelectorAll<HTMLElement>('[role="tabpanel"]')];
         assert(

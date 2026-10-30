@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-30T16:34:52Z",
+  "title": "Design System: Viewer Companion",
+  "extensions": {
+    "shadows": [
+      {
+        "name": "settings",
+        "value": "0 12px 36px #0008",
+        "purpose": "Existing anchored settings card."
+      },
+      {
+        "name": "floating-notice",
+        "value": "0 8px 32px #0006",
+        "purpose": "Existing floating upload notice; chat-mounted notices have no shadow."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Twitch VC navigation button",
+      "kind": "nav",
+      "description": "Existing Twitch control with the shared production monogram; visual extract only.",
+      "html": "<button class=\"ds-twitch\" type=\"button\" aria-label=\"Viewer Companion settings\" aria-haspopup=\"dialog\" aria-expanded=\"false\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 32 32\" fill=\"currentColor\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M1 6H6L10 19L15 6H20L12 26H7ZM24 6H31L29 11H25L21 21H27L25 26H19L16 22L21 9Z\"/></svg></button>",
+      "css": ".ds-twitch { all: unset; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 6px; color: #fff; cursor: pointer; transition: background-color .12s; } .ds-twitch:hover { background: #ffffff1a; } .ds-twitch:focus-visible { outline: 2px solid #a970ff; outline-offset: 2px; }"
+    },
+    {
+      "name": "Kick VC navigation button",
+      "kind": "nav",
+      "description": "Existing Kick control with the same geometry, not a separate logo variant.",
+      "html": "<button class=\"ds-kick\" type=\"button\" aria-label=\"Viewer Companion settings\" aria-haspopup=\"dialog\" aria-expanded=\"false\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 32 32\" fill=\"currentColor\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M1 6H6L10 19L15 6H20L12 26H7ZM24 6H31L29 11H25L21 21H27L25 26H19L16 22L21 9Z\"/></svg></button>",
+      "css": ".ds-kick { all: unset; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 8px; background: #27272a; color: #fff; cursor: pointer; transition: background-color .12s; } .ds-kick:hover { background: #3f3f46; } .ds-kick:focus-visible { outline: 2px solid #53fc18; outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary settings action",
+      "kind": "button",
+      "refersTo": "action",
+      "description": "Existing backup action appearance.",
+      "html": "<button class=\"ds-action\" type=\"button\">Export settings</button>",
+      "css": ".ds-action { min-height: 36px; padding: 0 12px; border: 1px solid #52525b; border-radius: 6px; background: #27272a; color: #fafafa; font: 500 13px/1.45 system-ui, sans-serif; cursor: pointer; } .ds-action:hover { background: #3f3f46; border-color: #71717a; } .ds-action:focus-visible { outline: 2px solid #a78bfa; outline-offset: 2px; } .ds-action:disabled { opacity: .55; cursor: default; }"
+    },
+    {
+      "name": "Primary settings action",
+      "kind": "button",
+      "refersTo": "action-primary",
+      "description": "Existing explicit settings-replacement confirmation appearance.",
+      "html": "<button class=\"ds-primary\" type=\"button\">Replace settings</button>",
+      "css": ".ds-primary { min-height: 36px; padding: 0 12px; border: 1px solid #9147ff; border-radius: 6px; background: #9147ff; color: #fafafa; font: 500 13px/1.45 system-ui, sans-serif; cursor: pointer; } .ds-primary:hover { background: #a970ff; border-color: #a970ff; } .ds-primary:focus-visible { outline: 2px solid #a78bfa; outline-offset: 2px; } .ds-primary:disabled { opacity: .55; cursor: default; }"
+    },
+    {
+      "name": "Exclusion textarea",
+      "kind": "input",
+      "refersTo": "textarea",
+      "description": "Existing multiline exclusion field appearance.",
+      "html": "<label class=\"ds-list\"><span>Excluded usernames</span><textarea class=\"ds-textarea\" rows=\"2\" spellcheck=\"false\" placeholder=\"username, another_user\"></textarea></label>",
+      "css": ".ds-list { display: flex; flex-direction: column; gap: 4px; color: #fafafa; font: 500 13px/1.45 system-ui, sans-serif; } .ds-textarea { box-sizing: border-box; width: 100%; min-height: 80px; resize: vertical; margin-top: 4px; padding: 8px 12px; border: 1px solid #52525b; border-radius: 6px; background: #09090b; color: #fafafa; caret-color: #a78bfa; font: 13px/1.5 system-ui, sans-serif; } .ds-textarea::placeholder { color: #a1a1aa; opacity: 1; } .ds-textarea:hover { border-color: #71717a; } .ds-textarea:focus-visible { outline: 2px solid #a78bfa; outline-offset: 1px; }"
+    },
+    {
+      "name": "Settings card surface",
+      "kind": "card",
+      "refersTo": "settings-card",
+      "description": "Existing shell and header extract, not a reconstructed settings dialog.",
+      "html": "<section class=\"ds-card\"><header class=\"ds-header\"><strong>Viewer Companion</strong></header></section>",
+      "css": ".ds-card { box-sizing: border-box; display: flex; flex-direction: column; width: 420px; max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); overflow: hidden; background: #18181b; color: #fafafa; border: 1px solid #3f3f46; border-radius: 10px; box-shadow: 0 12px 36px #0008; font: 13px/1.45 system-ui, sans-serif; } .ds-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: 0 0 auto; padding: 16px 16px 4px 20px; } .ds-header strong { font-size: 14px; font-weight: 600; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "A compact companion, not a replacement.",
+    "overview": "Viewer Companion (вьювер компаньен) uses an original, angular, solid monochrome VC monogram. The approved reference is 7TV's graphic economy, not its lettering or identity. This document captures a narrow rebrand and incumbent UI tokens, not a redesign or a new visual world. Existing layout, styles, behavior, and the product principles in `PRODUCT.md` remain unchanged.",
+    "keyCharacteristics": [
+      "Forward-cut solid V and open C; compact, monochrome recognition.",
+      "Existing dark settings, system typography, and purple interaction accents.",
+      "Host-compatible injected controls rather than a standalone application shell."
+    ],
+    "rules": [],
+    "dos": [
+      "Do preserve the shared authored geometry and theme-specific asset treatments.",
+      "Do preserve incumbent UI layout, styles, behavior, host integration, and accessibility handling."
+    ],
+    "donts": [
+      "Don't copy 7TV's mark or imply affiliation with external brands.",
+      "Don't expand this scoped rebrand into a redesign or invent palette ramps, motion, or a full visual world.",
+      "Don't rename compatibility identifiers, storage keys, or release artifacts solely to match visible branding."
+    ]
+  }
+}

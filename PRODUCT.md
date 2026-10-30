@@ -1,4 +1,4 @@
-# ImageUploader
+# Viewer Companion
 
 <!-- impeccable:product-schema 1 -->
 
@@ -10,15 +10,15 @@ Browser extension for Firefox and Chrome/Chromium, with a standalone Tampermonke
 
 ## Users
 
-Twitch and Kick chat participants who want to share clipboard images and view linked images without leaving chat. This primary audience was confirmed during init.
+Twitch and Kick viewers and chat participants who want companion tools without leaving the stream or chat.
 
 ## Product Purpose
 
-Make image sharing and viewing available within the existing chat workflow. Success means users can paste an image, obtain its public link, and choose when to send it, while viewing and optionally filtering image previews in chat.
+Provide a viewer companion within the existing Twitch and Kick workflow. Current tools focus on image sharing and viewing: users can paste an image, obtain its public link, and choose when to send it, while viewing and optionally filtering image previews in chat. Broader viewer tools are a product direction, not implemented capabilities.
 
 ## Positioning
 
-ImageUploader combines clipboard uploads through Twir Uploader, inline chat-link previews, an image viewer, and local image editing inside Twitch and Kick. It augments the host site's chat rather than replacing it. No exclusive capability or competitive superiority claim is established.
+Viewer Companion combines clipboard uploads through Twir Uploader, inline chat-link previews, an image viewer, and local image editing inside Twitch and Kick. It augments the host site's chat rather than replacing it. No exclusive capability or competitive superiority claim is established.
 
 ## Operating Context
 
@@ -26,7 +26,7 @@ ImageUploader combines clipboard uploads through Twir Uploader, inline chat-link
 - Pasting an image into an editable field on a supported site immediately starts an upload. Normal text pastes remain unchanged.
 - Completed links appear above a recognized chat input, with a floating notification as the fallback. Users can copy links and manually send their message.
 - Optional automatic insertion adds a link to an unsent draft; it is off by default and never sends messages.
-- A navigation gear opens settings. Chat previews can be disabled, opened in an on-page viewer or as website links, and excluded by username, domain, or known bot account. Previews from known bots are hidden by default. Settings can be exported to and imported from a local JSON backup; an import replaces all settings only after confirmation.
+- A navigation VC button opens settings. Chat previews can be disabled, opened in an on-page viewer or as website links, and excluded by username, domain, or known bot account. Previews from known bots are hidden by default. Settings can be exported to and imported from a local JSON backup; an import replaces all settings only after confirmation.
 - Upload thumbnails open an editor with crop, draw, rotate, horizontal flip, undo/redo, and reset. Uploading an edited image replaces its displayed link only after success.
 - The interface must coexist with host-site navigation, themes, chat input replacement, and chat remounting without disrupting messages, drafts, or normal link behavior.
 
@@ -38,14 +38,16 @@ ImageUploader combines clipboard uploads through Twir Uploader, inline chat-link
 - Chat previews inspect HTTP/HTTPS links and may fetch page metadata when direct image loading fails. Unsupported layouts and failed previews leave original messages and links intact.
 - Preview exclusions affect chat thumbnails, not uploaded-image panels or the editor. Settings apply without a page reload.
 - Settings are stored locally and shared across supported sites by extension storage or Tampermonkey storage. The userscript falls back to per-site local storage if its storage API is unavailable.
-- Clipboard images are read only from trusted paste events in editable fields. There is no clipboard polling, browsing-history collection, telemetry, or upload storage within ImageUploader. Clipboard replacement happens only on an explicit copy action.
+- Clipboard images are read only from trusted paste events in editable fields. There is no clipboard polling, browsing-history collection, telemetry, or upload storage within Viewer Companion. Clipboard replacement happens only on an explicit copy action.
 - Uploads and background metadata requests omit credentials and the host-page referrer. Chat text and Twitch/Kick page URLs are not sent to the uploader. Ordinary image requests and metadata requests still expose the user's IP address and requested URL to destination servers; image requests follow browser cookie policy.
 - Twir controls uploader availability and limits. Failed uploads are not automatically retried. Authenticated pages, script-generated metadata, and destination security policies may prevent previews.
 - The documented minimum browsers are Firefox 140+ and Chrome/Chromium 148+. Extension and userscript behavior should remain aligned where platform APIs permit.
 
 ## Brand Commitments
 
-The established product name is ImageUploader; injected interface labels also use “Image Uploader.” Twitch, Kick, and Twir Uploader are external services, not product-owned brands. No additional voice or visual commitments were established during init.
+The product name is Viewer Companion (вьювер компаньен), formerly ImageUploader. The user approved a minimalist, monochrome, angular VC monogram inspired by the graphic economy of 7TV, not a copy of its mark. Preserve the existing interface layout and behavior during this rebrand. Twitch, Kick, 7TV, and Twir Uploader are external brands; no affiliation is implied.
+
+Legacy extension IDs, userscript namespace and update URLs, storage keys, backup format, and release filenames remain stable for compatibility. Visible labels and new backup filenames use Viewer Companion.
 
 ## Evidence on Hand
 

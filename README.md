@@ -1,8 +1,14 @@
-# ImageUploader
+# Viewer Companion
+
+<img src="public/icon/icon.svg" width="64" height="64" alt="Viewer Companion VC logo">
+
+**Viewer Companion** is a viewer-focused extension for **Twitch** and **Kick**, formerly ImageUploader. Its current tools cover image sharing, inline chat previews, full-screen viewing, and local image editing.
 
 Upload clipboard images on **twitch.tv** and **kick.com**, including subdomains. Available as a Firefox/Chrome extension or a **Tampermonkey userscript**. Images are uploaded anonymously to [Twir Uploader](https://twir.app/uploader), and their links appear in a panel with a copy button above the Twitch or Kick chat input. Unrecognized chat layouts use a floating notification. Automatic link insertion is off by default; neither version sends messages for you.
 
 The project uses **WXT** to generate browser manifests, build entrypoints, and package extensions. **Bun 1.4.4** runs the tooling, tests, native type checker, and formatter, and bundles the standalone userscript. There are no `dev:*` commands or direct `web-ext` dependency; load the built extension or userscript manually.
+
+The rebrand keeps legacy extension identifiers, userscript namespace, release filenames, and update URLs unchanged so existing installations and saved settings remain compatible.
 
 ## Getting started
 
@@ -58,7 +64,7 @@ Each uploaded link also has a clickable image preview above its copy row, in bot
 
 ### Settings
 
-Click the gear button next to the account controls in the Twitch top navigation or next to **Get KICKs** in the Kick header. The panel has **General**, **Filters**, and **Backup** tabs.
+Click the **VC** button next to the account controls in the Twitch top navigation or next to **Get KICKs** in the Kick header. The panel has **General**, **Filters**, and **Backup** tabs.
 
 Under **General**:
 
@@ -74,7 +80,7 @@ Under **Filters** you can exclude:
 
 Exclusions save automatically and apply to existing and new messages without reloading the page. Empty lists exclude nothing. These filters affect chat thumbnails only, not your upload panel or image editor.
 
-Under **Backup**, **Export settings** downloads a JSON file containing all six settings, including the exclusion lists. **Import settings** accepts a file created by that export, shows a summary, and replaces every current setting only after you choose **Replace settings**. The backup contains no chats, drafts, uploads, or account data, and importing it does not send anything off the device.
+Under **Backup**, **Export settings** downloads a JSON file containing all six settings, including the exclusion lists. **Import settings** accepts a file created by that export, shows a summary, and replaces every current setting only after you choose **Replace settings**. The backup contains no chats, drafts, uploads, or account data, and importing it does not send anything off the device. Backups made by ImageUploader remain compatible.
 
 Settings are shared across Twitch and Kick by the extension. The userscript stores them in Tampermonkey storage (`GM_getValue`/`GM_setValue`), which is also shared across sites; if that API is unavailable it falls back to the current site's local storage. No setting is uploaded anywhere.
 

@@ -1,4 +1,5 @@
 import type { Settings, SettingsController } from "./settings";
+import { BRAND_NAME, createBrandIcon } from "./brand";
 import { normalizeDomainList, normalizeUserList } from "./preview-filters";
 import {
   MAX_SETTINGS_BACKUP_BYTES,
@@ -14,15 +15,6 @@ type Site = "twitch" | "kick";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-// Product icon: a picture with an upload badge. The outlined badge stays
-// legible at the small settings-button size without a hard-coded background.
-const IMAGE_UPLOAD_ICON = [
-  ["rect", { x: 1.9, y: 1.9, width: 13.2, height: 13.2, rx: 2.2 }],
-  ["circle", { cx: 11.2, cy: 6, r: 1.8, fill: "currentColor" }],
-  ["path", { d: "M2.7 14.2 6.9 10l4.2 4.2" }],
-  ["circle", { cx: 18.4, cy: 18.4, r: 4.6 }],
-  ["path", { d: "M18.4 20.5v-4.2M16.3 18.4l2.1-2.1 2.1 2.1" }],
-] as const;
 const TWITCH_ANCHORS = [
   '[data-a-target="user-menu-toggle"]',
   '[data-test-selector="user-menu__toggle"]',
@@ -128,29 +120,6 @@ function findAnchor(doc: Document, site: Site): Anchor | null {
   return null;
 }
 
-function createIcon(doc: Document): SVGSVGElement {
-  const svg = doc.createElementNS(SVG_NS, "svg");
-  for (const [name, value] of Object.entries({
-    width: "20",
-    height: "20",
-    viewBox: "0 0 24 24",
-    fill: "none",
-    stroke: "currentColor",
-    "stroke-width": "2",
-    "stroke-linecap": "round",
-    "stroke-linejoin": "round",
-    "aria-hidden": "true",
-    focusable: "false",
-  }))
-    svg.setAttribute(name, value);
-  for (const [tag, attributes] of IMAGE_UPLOAD_ICON) {
-    const node = doc.createElementNS(SVG_NS, tag);
-    for (const [name, value] of Object.entries(attributes)) node.setAttribute(name, String(value));
-    svg.append(node);
-  }
-  return svg;
-}
-
 function createButton(doc: Document, site: Site, open: () => void) {
   const host = doc.createElement("span");
   host.setAttribute(SETTINGS_BUTTON_ATTRIBUTE, site);
@@ -177,11 +146,11 @@ function createButton(doc: Document, site: Site, open: () => void) {
       `;
   const button = doc.createElement("button");
   button.type = "button";
-  button.title = "Image Uploader settings";
-  button.setAttribute("aria-label", "Image Uploader settings");
+  button.title = `${BRAND_NAME} settings`;
+  button.setAttribute("aria-label", `${BRAND_NAME} settings`);
   button.setAttribute("aria-haspopup", "dialog");
   button.setAttribute("aria-expanded", "false");
-  button.append(createIcon(doc));
+  button.append(createBrandIcon(doc));
   button.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -321,12 +290,12 @@ function buildPanel(doc: Document, settings: SettingsController) {
   const card = doc.createElement("section");
   card.className = "card";
   card.setAttribute("role", "dialog");
-  card.setAttribute("aria-label", "Image Uploader settings");
+  card.setAttribute("aria-label", `${BRAND_NAME} settings`);
   card.addEventListener("click", (event) => event.stopPropagation());
 
   const header = doc.createElement("header");
   const title = doc.createElement("strong");
-  title.textContent = "Image Uploader";
+  title.textContent = BRAND_NAME;
   const closeButton = doc.createElement("button");
   closeButton.type = "button";
   closeButton.className = "close";
@@ -588,7 +557,7 @@ function buildPanel(doc: Document, settings: SettingsController) {
       }
       setStatus("Backup file exported.");
     } catch (error) {
-      console.error("[ImageUploader] Could not export settings", error);
+      console.error("[Viewer Companion] Could not export settings", error);
       setStatus("Could not export settings.", "error");
     }
   });

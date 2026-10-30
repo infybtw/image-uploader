@@ -1,17 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
   <style>
-    .glyph { stroke: #000; }
-    .glyph-fill { fill: #000; }
-    .badge { fill: #fff; stroke: #000; }
-    .arrow { fill: #000; stroke: #000; }
+    path { fill: #18181b; }
     @media (prefers-color-scheme: dark) {
-      .glyph { stroke: #fff; }
-      .glyph-fill { fill: #fff; }
+      path { fill: #fff; }
     }
   </style>
-  <rect class="glyph" x="1.9" y="1.9" width="13.2" height="13.2" rx="2.2" stroke-width="2.5"/>
-  <circle class="glyph-fill" cx="11.2" cy="6" r="1.8"/>
-  <path class="glyph" d="M2.7 14.2 6.9 10l4.2 4.2" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle class="badge" cx="18.1" cy="18.1" r="5.4" stroke-width="1.9"/>
-  <path class="arrow" d="M18.1 14.6 21.5 18h-2.2v2.9h-2.4V18h-2.2Z" stroke-width=".8" stroke-linejoin="round"/>
+  <path d="M1 6H6L10 19L15 6H20L12 26H7ZM24 6H31L29 11H25L21 21H27L25 26H19L16 22L21 9Z"/>
 </svg>
