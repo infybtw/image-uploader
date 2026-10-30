@@ -143,6 +143,9 @@ export function observeChatPreviews(
     host.setAttribute(PREVIEW_ATTRIBUTE, "");
     host.style.cssText =
       "all:initial;display:block;box-sizing:border-box;width:100%;max-width:100%;margin-top:6px";
+    // Previews are siblings of messages, so they need Twitch's chat gutter too.
+    if (hostname === "twitch.tv" || hostname.endsWith(".twitch.tv"))
+      host.style.paddingLeft = "20px";
     const shadow = host.attachShadow({ mode: "open" });
     const style = owner.createElement("style");
     style.textContent = `

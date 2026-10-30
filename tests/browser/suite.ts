@@ -182,8 +182,18 @@ for (const hostname of ["www.twitch.tv", "kick.com"]) {
         previewLink.target === "_blank" && previewLink.rel.includes("noreferrer"),
         "unsafe link",
       );
+      document.body.append(root);
+      const gutter = hostname.endsWith("twitch.tv") ? 20 : 0;
+      for (const width of [180, 340]) {
+        root.style.width = `${width}px`;
+        const bounds = root.getBoundingClientRect();
+        const thumbnail = previewLink.getBoundingClientRect();
+        assert(thumbnail.left - bounds.left === gutter, "incorrect chat preview gutter");
+        assert(thumbnail.right <= bounds.right, "preview overflows narrow chat");
+      }
     } finally {
       stop();
+      root.remove();
     }
     assert(!previewHost(message), "cleanup left a preview behind");
   });
@@ -216,8 +226,16 @@ test("7TV messages mount previews outside the moderation slider", () => {
     assert(host && host.parentElement === row, "preview not attached to the 7TV row");
     assert(!slider.contains(host), "preview remained inside the moderation slider");
     assert(row.lastElementChild === host, "preview not outside the message content");
+    root.style.width = "340px";
+    document.body.append(root);
+    const thumbnail = host.shadowRoot!.querySelector("a")!.getBoundingClientRect();
+    assert(
+      thumbnail.left - row.getBoundingClientRect().left === 20,
+      "7TV preview is missing the Twitch chat gutter",
+    );
   } finally {
     stop();
+    root.remove();
   }
   assert(!root.querySelector("[data-imageuploader-preview]"), "cleanup left a 7TV preview");
 });
