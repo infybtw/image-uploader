@@ -21,14 +21,14 @@
       "name": "Twitch VC navigation button",
       "kind": "nav",
       "description": "Existing Twitch control with the shared production monogram; visual extract only.",
-      "html": "<button class=\"ds-twitch\" type=\"button\" aria-label=\"Viewer Companion settings\" aria-haspopup=\"dialog\" aria-expanded=\"false\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 32 32\" fill=\"currentColor\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M1 6H6L10 19L15 6H20L12 26H7ZM24 6H31L29 11H25L21 21H27L25 26H19L16 22L21 9Z\"/></svg></button>",
+      "html": "<button class=\"ds-twitch\" type=\"button\" aria-label=\"Viewer Companion settings\" aria-haspopup=\"dialog\" aria-expanded=\"false\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 32 32\" fill=\"currentColor\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M1 6H6L10 19L15 6H20L12 26H7ZM24 6H27L30 9L28 14H24L25 11H24L20 21H25L26 18H30L27 26H19L16 22L21 9Z\"/></svg></button>",
       "css": ".ds-twitch { all: unset; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 6px; color: #fff; cursor: pointer; transition: background-color .12s; } .ds-twitch:hover { background: #ffffff1a; } .ds-twitch:focus-visible { outline: 2px solid #a970ff; outline-offset: 2px; }"
     },
     {
       "name": "Kick VC navigation button",
       "kind": "nav",
       "description": "Existing Kick control with the same geometry, not a separate logo variant.",
-      "html": "<button class=\"ds-kick\" type=\"button\" aria-label=\"Viewer Companion settings\" aria-haspopup=\"dialog\" aria-expanded=\"false\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 32 32\" fill=\"currentColor\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M1 6H6L10 19L15 6H20L12 26H7ZM24 6H31L29 11H25L21 21H27L25 26H19L16 22L21 9Z\"/></svg></button>",
+      "html": "<button class=\"ds-kick\" type=\"button\" aria-label=\"Viewer Companion settings\" aria-haspopup=\"dialog\" aria-expanded=\"false\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 32 32\" fill=\"currentColor\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M1 6H6L10 19L15 6H20L12 26H7ZM24 6H27L30 9L28 14H24L25 11H24L20 21H25L26 18H30L27 26H19L16 22L21 9Z\"/></svg></button>",
       "css": ".ds-kick { all: unset; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 8px; background: #27272a; color: #fff; cursor: pointer; transition: background-color .12s; } .ds-kick:hover { background: #3f3f46; } .ds-kick:focus-visible { outline: 2px solid #53fc18; outline-offset: 2px; }"
     },
     {

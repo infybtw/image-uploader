@@ -4,7 +4,7 @@ export const BRAND_VIEW_BOX = "0 0 32 32";
 // Original VC lettering: two solid, forward-cut forms with an open counter.
 // Shared by the navigation button and the generated browser icon assets.
 export const BRAND_PATH =
-  "M1 6H6L10 19L15 6H20L12 26H7ZM24 6H31L29 11H25L21 21H27L25 26H19L16 22L21 9Z";
+  "M1 6H6L10 19L15 6H20L12 26H7ZM24 6H27L30 9L28 14H24L25 11H24L20 21H25L26 18H30L27 26H19L16 22L21 9Z";
 
 export function createBrandIcon(doc: Document): SVGSVGElement {
   const ns = "http://www.w3.org/2000/svg";

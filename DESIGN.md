@@ -96,7 +96,7 @@ Existing panels combine dark tonal layering, borders, and structural shadows. Se
 
 ## Shapes
 
-The mark shares a (32×32) viewBox across `src/brand.ts`, `public/icon/icon.svg`, and `public/icon/theme.svg`; those files own the geometry. The browser tile has rounded corners (5 viewBox units), a neutral surface, and a white path. The transparent theme asset uses the neutral path in light mode and white in dark mode. Production navigation uses the same path at (20×20px), filled with `currentColor`. Keep the solid forward-cut V, open C, and their negative space; do not replace them with font letters or an outlined approximation.
+The mark shares a (32×32) viewBox across `src/brand.ts`, `public/icon/icon.svg`, and `public/icon/theme.svg`; those files own the geometry. The browser tile has rounded corners (5 viewBox units), a neutral surface, and a white path. The transparent theme asset uses the neutral path in light mode and white in dark mode. Production navigation uses the same path at (20×20px), filled with `currentColor`. Keep the solid forward-cut V, open C, and their negative space; do not replace them with font letters or an outlined approximation. The revised C has inward-facing terminals, a beveled outer shoulder, and extra right clearance so its opening reads as intentional rather than a clipped letter.
 
 ## Components
 
