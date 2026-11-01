@@ -39,6 +39,12 @@ export default defineConfig({
     ],
   },
   hooks: {
+    "build:publicAssets": (_, files) => {
+      // README screenshots belong in the source archive, not the installed extension.
+      for (let index = files.length - 1; index >= 0; index--) {
+        if (files[index]!.relativeDest.startsWith("screenshots/")) files.splice(index, 1);
+      }
+    },
     "config:resolved": ({ config }) => {
       // WXT excludes *.test.ts by default. Our explicit source allowlist should
       // include them so the reviewer can run the documented checks as well.

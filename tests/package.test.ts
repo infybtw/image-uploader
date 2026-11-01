@@ -44,6 +44,8 @@ test("WXT packages each browser and includes rebuildable Firefox sources", async
           "src/entrypoints/content.ts",
           "public/icon/icon.svg",
           "public/icon/theme.svg",
+          "public/screenshots/settings-general.png",
+          "public/screenshots/upload-panel.png",
           "tests/build.test.ts",
           "tests/package.test.ts",
           "extension/manifest.json",
