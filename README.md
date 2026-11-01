@@ -1,6 +1,8 @@
 # Viewer Companion
 
-<img src="public/icon/icon.svg" width="64" height="64" alt="Viewer Companion VC logo">
+<p align="center">
+  <img src="public/icon/icon.svg" width="200" height="200" alt="Viewer Companion VC logo">
+</p>
 
 **Viewer Companion** is a viewer-focused extension for **Twitch** and **Kick**, formerly ImageUploader. Its current tools cover image sharing, inline chat previews, full-screen viewing, and local image editing.
 
