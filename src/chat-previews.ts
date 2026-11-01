@@ -4,6 +4,7 @@ import { bindImageViewer } from "./image-viewer";
 import type { PreviewClick } from "./settings";
 import { createPreviewFilter, type PreviewFilters } from "./preview-filters";
 import { isPreviewMounted, mountPreview } from "./chat-preview-placement";
+import { createChatPreviewScroll } from "./chat-preview-scroll";
 
 const PREVIEW_ATTRIBUTE = "data-imageuploader-preview";
 const EMPTY_FILTERS: PreviewFilters = { blockedUsers: [], blockedDomains: [], hideBots: false };
@@ -103,6 +104,7 @@ export function observeChatPreviews(
   const hostMessages = new WeakMap<HTMLElement, Element>();
   const hosts = new Set<HTMLElement>();
   const owner = root.ownerDocument ?? (root as Document);
+  const scroll = createChatPreviewScroll(owner);
   let filter = createPreviewFilter(getFilters());
   let stopped = false;
 
@@ -120,7 +122,7 @@ export function observeChatPreviews(
     const previous = states.get(message);
     if (previous?.key === key) {
       if (previous.host && !isPreviewMounted(previous.host, message))
-        mountPreview(previous.host, message);
+        scroll.preserve(message, () => mountPreview(previous.host!, message));
       if (!force) return;
       // Typing an exclusion must not reload every unrelated image in the chat.
       // Revisit removed metadata thumbnails only if a filter might now allow them.
@@ -133,7 +135,7 @@ export function observeChatPreviews(
       )
         return;
     }
-    previous?.host?.remove();
+    if (previous?.host) scroll.preserve(message, () => previous.host!.remove());
     if (previous?.host) hosts.delete(previous.host);
     const state = { key, host: null as HTMLElement | null, blockedSource: false };
     states.set(message, state);
@@ -167,13 +169,15 @@ export function observeChatPreviews(
       image.referrerPolicy = "no-referrer";
       bindImageViewer(link, image, getClickAction);
       const remove = () => {
-        link.remove();
-        if (!shadow.querySelector("a")) {
-          host.remove();
-          state.host = null; // Do not retry broken links on every chat mutation.
-          hosts.delete(host);
-          hostMessages.delete(host);
-        }
+        scroll.preserve(message, () => {
+          link.remove();
+          if (!shadow.querySelector("a")) {
+            host.remove();
+            state.host = null; // Do not retry broken links on every chat mutation.
+            hosts.delete(host);
+            hostMessages.delete(host);
+          }
+        });
       };
       const current = () =>
         !stopped &&
@@ -189,7 +193,9 @@ export function observeChatPreviews(
             remove();
             return;
           }
-          link.style.display = "none";
+          scroll.preserve(message, () => {
+            link.style.display = "none";
+          });
           void Promise.resolve()
             .then(() => (current() ? resolvePage(url) : null))
             .then((imageUrl) => {
@@ -203,8 +209,10 @@ export function observeChatPreviews(
                 return;
               }
               image.addEventListener("error", remove, { once: true });
-              link.style.removeProperty("display");
-              image.src = source;
+              scroll.preserve(message, () => {
+                link.style.removeProperty("display");
+                image.src = source;
+              });
             })
             .catch(remove);
         },
@@ -214,7 +222,7 @@ export function observeChatPreviews(
       link.append(image);
       shadow.append(link);
     }
-    if (!mountPreview(host, message)) {
+    if (!scroll.preserve(message, () => mountPreview(host, message))) {
       host.remove();
       return;
     }
@@ -232,7 +240,7 @@ export function observeChatPreviews(
   function removePreview(message: Element) {
     const state = states.get(message);
     if (state?.host) {
-      state.host.remove();
+      scroll.preserve(message, () => state.host!.remove());
       hosts.delete(state.host);
       hostMessages.delete(state.host);
     }
@@ -294,6 +302,7 @@ export function observeChatPreviews(
   const stop = () => {
     stopped = true;
     observer.disconnect();
+    scroll.stop();
     for (const host of hosts) host.remove();
     hosts.clear();
   };

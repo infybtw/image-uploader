@@ -16,6 +16,7 @@ import {
 import { MAX_SETTINGS_BACKUP_BYTES } from "../../src/settings-transfer";
 import { checkImageViewer } from "./image-viewer";
 import { checkPreviewFilters } from "./preview-filters";
+import { checkPreviewScroll } from "./preview-scroll";
 import { checkImageEditor, editorFixture } from "./image-editor";
 import {
   createPreviewPageResolver,
@@ -571,6 +572,7 @@ async function checkClipboard() {
   });
   await checkChatPreviews();
   await checkPreviewFilters(check);
+  await checkPreviewScroll(check);
   await checkImageViewer(check);
   await checkImageEditor(check);
   await checkNoticePlacement();

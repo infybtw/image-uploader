@@ -90,6 +90,8 @@ Metadata is fetched anonymously without a referrer, following redirects, with an
 
 Previews work for existing and newly arriving messages, including after chat navigation/remounting. Images load lazily, with one preview per unique URL and no per-message limit. Pages without image metadata, failed or deleted images, and images blocked by the site's security policy leave only the original link. Unrecognized chat layouts are left unchanged.
 
+When chat is at or near the bottom, autoscroll includes the height of previews, including late metadata thumbnails. Scrolling up to read earlier messages keeps your position instead of pulling you back down.
+
 ### Large image viewer
 
 Click any thumbnail in chat to view the image centered over a darkened, blurred backdrop without leaving the site. The image initially fits the available space. The same viewer is included in both browser extensions and the userscript. Your own upload-panel thumbnails open the image editor instead.
