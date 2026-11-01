@@ -40,6 +40,8 @@ Chrome Web Store installation is **work in progress**. For now, use the **Tamper
 2. Wait for the panel above the Twitch or Kick chat input and click the copy button to the right of the link.
 3. Paste the link into chat and send the message yourself.
 
+![Viewer Companion upload panel with an image preview, copy button, and uploaded link inserted into the chat draft](public/screenshots/upload-panel.png)
+
 Context-menu paste and other system paste shortcuts also work: the extension handles the `paste` event. Normal text pastes are unchanged. Password fields, disabled inputs, and pastes outside an editor are ignored.
 
 The panel stays visible until you close it or successfully copy a link. It is embedded in Twitch and Kick without covering chat messages, uses the site's theme colors, and reattaches if the site replaces the chat input. If the chat input disappears or its layout is not recognized, a floating notification keeps the links available. Chat content and caret position are unchanged; the clipboard is overwritten only when you click the copy button. After a successful copy, the panel shows a three-second countdown and closes; copying again restarts the countdown. With automatic insertion enabled and successful, the uploaded link is added to the unsent chat message and the panel closes after three seconds. The Morphicons/Lucide icon morphs into a green checkmark and changes back after 2 seconds. The animation respects reduced-motion preferences.
@@ -49,6 +51,8 @@ Each uploaded link also has a clickable image preview above its copy row, in bot
 ### Settings
 
 Click the **VC** button next to the account controls in the Twitch top navigation or next to **Get KICKs** in the Kick header. The panel has **General**, **Filters**, and **Backup** tabs.
+
+![Viewer Companion General settings with chat previews, preview click behavior, and automatic link insertion controls](public/screenshots/settings-general.png)
 
 Under **General**:
 
