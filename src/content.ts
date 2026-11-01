@@ -8,6 +8,7 @@ import { registerChatPreviews } from "./chat-previews";
 import type { ResolvePreviewPage } from "./preview-page";
 import { createSettings, DEFAULT_SETTINGS, type SettingsController } from "./settings";
 import { registerSettingsUi } from "./settings-ui";
+import type { Accounts } from "./accounts";
 
 export const AUTO_INSERT_DISMISS_MS = 3_000;
 
@@ -19,6 +20,7 @@ export function registerPasteHandler(
     load: () => DEFAULT_SETTINGS,
     save: () => {},
   }),
+  accounts?: Accounts,
 ) {
   let busy = false;
 
@@ -47,7 +49,7 @@ export function registerPasteHandler(
     };
     settings.subscribe(syncPreviews);
     void settings.ready.then(syncPreviews);
-    registerSettingsUi(settings);
+    registerSettingsUi(settings, location.hostname, accounts);
 
     document.addEventListener(
       "paste",

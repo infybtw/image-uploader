@@ -51,18 +51,39 @@ export function parseUploadUrl(body: unknown): string {
 
 type Fetch = (url: string, init: RequestInit) => Promise<Response>;
 
+export class UploadHttpError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
 export async function uploadImage(
   payload: unknown,
   fetcher: Fetch = fetch,
   timeoutMs = UPLOAD_TIMEOUT_MS,
+  accessToken?: string,
 ): Promise<string> {
-  const file = decodeImage(payload);
+  return uploadFile(decodeImage(payload), fetcher, timeoutMs, accessToken);
+}
+
+// Background can decode once before refreshing credentials and reuse the File.
+export async function uploadFile(
+  file: File,
+  fetcher: Fetch = fetch,
+  timeoutMs = UPLOAD_TIMEOUT_MS,
+  accessToken?: string,
+): Promise<string> {
+  validateImage(file.type, file.size);
   const form = new FormData();
   form.append("file", file);
   let response: Response;
   try {
     response = await fetcher(UPLOAD_ENDPOINT, {
       method: "POST",
+      ...(accessToken ? { headers: { Authorization: `Bearer ${accessToken}` } } : {}),
       body: form,
       credentials: "omit",
       referrerPolicy: "no-referrer",
@@ -81,13 +102,20 @@ export async function uploadImage(
   }
   if (!response.ok) {
     const messages: Record<number, string> = {
-      401: "Twir requires authentication. Anonymous uploads are currently unavailable.",
-      403: "Twir rejected the anonymous upload.",
+      401: accessToken
+        ? "Your Twir connection has expired. Reconnect Twir in Settings → Accounts."
+        : "Twir requires authentication. Anonymous uploads are currently unavailable.",
+      403: accessToken
+        ? "Twir denied this upload. Check your account permissions in Twir."
+        : "Twir rejected the anonymous upload.",
       413: "Twir rejected the file: the image exceeds the size limit.",
       415: "Twir does not support this image format.",
       429: "Too many uploads. Please wait and try again.",
     };
-    throw new Error(messages[response.status] ?? `Twir error: HTTP ${response.status}.`);
+    throw new UploadHttpError(
+      response.status,
+      messages[response.status] ?? `Twir error: HTTP ${response.status}.`,
+    );
   }
   let body: unknown;
   try {

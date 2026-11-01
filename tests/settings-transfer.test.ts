@@ -36,6 +36,27 @@ describe("settings backup", () => {
     expect(result).toEqual({ ok: true, settings: saved });
   });
 
+  test("never exports or imports OAuth credentials supplied as unknown settings fields", () => {
+    const mixed = {
+      ...saved,
+      accessToken: "access-secret",
+      refreshToken: "refresh-secret",
+      twirOAuthSession: { token: "session-secret" },
+    };
+    const text = serializeSettingsBackup(mixed);
+    expect(text).not.toContain("secret");
+    expect(JSON.parse(text).settings).toEqual(saved);
+    const imported = parseSettingsBackup(
+      JSON.stringify({
+        format: "imageuploader-settings",
+        version: 1,
+        settings: mixed,
+        accounts: { twir: "refresh-secret" },
+      }),
+    );
+    expect(imported).toEqual({ ok: true, settings: saved });
+  });
+
   test("normalizes imported values and ignores unknown keys", () => {
     const result = parseSettingsBackup(
       JSON.stringify({

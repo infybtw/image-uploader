@@ -14,6 +14,7 @@ import {
   SETTINGS_PANEL_ATTRIBUTE,
 } from "../../src/settings-ui";
 import { MAX_SETTINGS_BACKUP_BYTES } from "../../src/settings-transfer";
+import type { Accounts, TwirAccountStatus } from "../../src/accounts";
 import { checkImageViewer } from "./image-viewer";
 import { checkPreviewFilters } from "./preview-filters";
 import { checkPreviewScroll } from "./preview-scroll";
@@ -570,6 +571,54 @@ async function checkClipboard() {
     });
     assert(reply?.page === null, "metadata request bypassed the sender allowlist");
   });
+  await check(
+    "account background commands reject non-allowlisted pages without exposing credentials",
+    async () => {
+      for (const type of ["twir-status", "twir-connect", "twir-disconnect"]) {
+        const reply = await browser.runtime.sendMessage({ type });
+        assert(
+          reply?.ok === false && /only available/.test(reply.error),
+          "account sender was not rejected",
+        );
+        assert(!JSON.stringify(reply).includes("token"), "credentials leaked in account reply");
+      }
+    },
+  );
+  await check(
+    "persistent credentials are isolated from content scripts and session storage is private",
+    async () => {
+      try {
+        const seeded = await browser.runtime.sendMessage({ type: "test-auth-seed" });
+        assert(
+          seeded?.ok,
+          `background account store did not persist its records: ${JSON.stringify(seeded)}`,
+        );
+        let session: unknown;
+        try {
+          session = await browser.storage.session.get("twirOAuthSession");
+        } catch {}
+        assert(
+          !JSON.stringify(session ?? {}).includes("test-access-secret"),
+          "content script can read session access token",
+        );
+        const local = await browser.storage.local.get(null);
+        assert(!JSON.stringify(local).includes("secret"), "credentials were saved with settings");
+        const database = await new Promise<IDBDatabase>((resolve, reject) => {
+          const request = indexedDB.open("viewer-companion-accounts", 1);
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        assert(
+          !database.objectStoreNames.contains("credentials"),
+          "content script can open the extension's credential database",
+        );
+        database.close();
+        indexedDB.deleteDatabase("viewer-companion-accounts");
+      } finally {
+        await browser.runtime.sendMessage({ type: "test-auth-clear" });
+      }
+    },
+  );
   await checkChatPreviews();
   await checkPreviewFilters(check);
   await checkPreviewScroll(check);
@@ -579,7 +628,151 @@ async function checkClipboard() {
   await checkCopyButtons();
   await checkNoticeCountdown();
   await checkSettings();
+  await checkAccounts();
   await fetch("/results", { method: "POST", body: JSON.stringify(results) });
+}
+
+async function checkAccounts() {
+  const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+  for (const supported of [false, true]) {
+    await check(
+      `Accounts: ${supported ? "extension connection states and recovery" : "userscript explains unavailable sign-in"}`,
+      async () => {
+        document.body.replaceChildren();
+        const settings = createSettings({ load: () => ({}), save: () => {} });
+        await settings.ready;
+        const nav = document.createElement("nav");
+        nav.innerHTML = '<button data-a-target="user-menu-toggle">Account</button>';
+        document.body.append(nav);
+        let status: TwirAccountStatus = "disconnected";
+        let offline = false;
+        let failConnect = false;
+        let connectCount = 0;
+        let pending: ReturnType<typeof Promise.withResolvers<void>> | undefined;
+        const accounts: Accounts = {
+          async status() {
+            return status;
+          },
+          async connect() {
+            connectCount++;
+            if (failConnect)
+              throw new Error(
+                "Twir sign-in failed (browser): Authorization page could not be loaded.",
+              );
+            status = "connecting";
+            if (pending) await pending.promise;
+            else status = "connected";
+          },
+          async disconnect() {
+            status = "disconnected";
+            return { revoked: !offline };
+          },
+        };
+        const stop = registerSettingsUi(
+          settings,
+          "www.twitch.tv",
+          supported ? accounts : undefined,
+        );
+        try {
+          document
+            .querySelector(`[${SETTINGS_BUTTON_ATTRIBUTE}]`)!
+            .shadowRoot!.querySelector<HTMLButtonElement>("button")!
+            .click();
+          const root = document.querySelector(`[${SETTINGS_PANEL_ATTRIBUTE}]`)!.shadowRoot!;
+          const tabs = [...root.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+          tabs.find((tab) => tab.textContent === "Accounts")!.click();
+          await tick();
+          const panel = root.querySelector<HTMLElement>("#settings-panel-accounts")!;
+          assert(
+            !panel.hidden && panel.textContent!.includes("Twir"),
+            "Accounts tab is missing Twir",
+          );
+          assert(panel.textContent!.includes("public"), "public-image disclosure missing");
+          if (!supported) {
+            assert(
+              panel.textContent!.includes("Not available in the userscript version"),
+              "userscript limitation is not explained",
+            );
+            assert(!panel.querySelector("button"), "userscript offers nonfunctional sign-in");
+            return;
+          }
+          const connect = panel.querySelector<HTMLButtonElement>(".primary")!;
+          const disconnect = panel.querySelector<HTMLButtonElement>(".action:not(.primary)")!;
+          assert(
+            connect.textContent === "Connect Twir" && !connect.disabled && disconnect.hidden,
+            "incorrect disconnected state",
+          );
+          failConnect = true;
+          connect.click();
+          await tick();
+          assert(
+            panel.textContent!.includes(
+              "Twir sign-in failed (browser): Authorization page could not be loaded.",
+            ) && !connect.disabled,
+            "sign-in error prevents retry",
+          );
+          failConnect = false;
+          connect.click();
+          await tick();
+          assert(
+            connect.hidden && !disconnect.hidden && panel.textContent!.includes("Connected ·"),
+            "successful connection not shown",
+          );
+          offline = true;
+          disconnect.click();
+          await tick();
+          assert(
+            !connect.hidden && panel.textContent!.includes("could not confirm revocation"),
+            "offline logout was not explained",
+          );
+          status = "reconnect-required";
+          // Reopening reads fresh background state without storing account data in settings.
+          root.querySelector<HTMLButtonElement>('[aria-label="Close settings"]')!.click();
+          document
+            .querySelector(`[${SETTINGS_BUTTON_ATTRIBUTE}]`)!
+            .shadowRoot!.querySelector<HTMLButtonElement>("button")!
+            .click();
+          const reopened = document.querySelector(`[${SETTINGS_PANEL_ATTRIBUTE}]`)!.shadowRoot!;
+          reopened.querySelector<HTMLButtonElement>("#settings-tab-accounts")!.click();
+          await tick();
+          const reconnect = reopened.querySelector<HTMLButtonElement>(
+            "#settings-panel-accounts .primary",
+          )!;
+          assert(
+            reconnect.textContent === "Reconnect Twir" &&
+              reopened.textContent!.includes("Nothing will be uploaded anonymously"),
+            "expired connection has no recovery",
+          );
+          pending = Promise.withResolvers<void>();
+          reconnect.click();
+          await tick();
+          const cancel = reopened.querySelector<HTMLButtonElement>(
+            "#settings-panel-accounts .action:not(.primary)",
+          )!;
+          assert(
+            cancel.textContent === "Cancel sign-in" && !cancel.disabled,
+            "pending sign-in cannot be canceled",
+          );
+          cancel.click();
+          await tick();
+          pending.reject(new Error("Old sign-in was canceled"));
+          await tick();
+          assert(
+            !reopened.textContent!.includes("Old sign-in"),
+            "late sign-in callback overwrote logout feedback",
+          );
+          assert(connectCount === 3, "unexpected number of sign-in requests");
+          assert(
+            !JSON.stringify(settings.get()).includes("Twir"),
+            "account credentials entered settings",
+          );
+        } finally {
+          stop();
+          nav.remove();
+        }
+      },
+    );
+  }
 }
 
 async function checkChatPreviews() {
@@ -1474,10 +1667,11 @@ async function checkSettings() {
         const tabs = [...root.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
         const tabPanels = [...root.querySelectorAll<HTMLElement>('[role="tabpanel"]')];
         assert(
-          tabs.length === 3 &&
+          tabs.length === 4 &&
             tabs[0]!.textContent === "General" &&
             tabs[1]!.textContent === "Filters" &&
-            tabs[2]!.textContent === "Backup",
+            tabs[2]!.textContent === "Accounts" &&
+            tabs[3]!.textContent === "Backup",
           "settings categories missing",
         );
         assert(
@@ -1502,10 +1696,12 @@ async function checkSettings() {
         for (const [key, index] of [
           ["ArrowRight", 1],
           ["ArrowRight", 2],
+          ["ArrowRight", 3],
           ["ArrowRight", 0],
-          ["ArrowLeft", 2],
+          ["ArrowLeft", 3],
           ["Home", 0],
-          ["End", 2],
+          ["End", 3],
+          ["ArrowLeft", 2],
           ["ArrowLeft", 1],
         ] as const) {
           root.activeElement!.dispatchEvent(
@@ -1736,8 +1932,8 @@ async function checkSettings() {
       const panel = document.querySelector<HTMLElement>(`[${SETTINGS_PANEL_ATTRIBUTE}]`)!;
       const root = panel.shadowRoot!;
       const tabs = [...root.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
-      tabs[2]!.click();
-      const status = root.querySelector<HTMLElement>(".status")!;
+      tabs[3]!.click();
+      const status = root.querySelector<HTMLElement>("#settings-panel-backup .status")!;
       const review = root.querySelector<HTMLElement>(".review")!;
       const buttons = [...root.querySelectorAll<HTMLButtonElement>(".action")];
       const button = (label: string) => buttons.find((element) => element.textContent === label)!;
@@ -1838,7 +2034,7 @@ async function checkSettings() {
         "import did not update the bot toggle",
       );
 
-      tabs[2]!.click();
+      tabs[3]!.click();
       choose(backup.replace('"@SomeOne"', '"cancelled"'), "cancel.json");
       await waitFor(() => !review.hidden, "cancel backup was not reviewed");
       cancelButton.click();

@@ -6,6 +6,7 @@ import type { UploadMessage, UploadReply } from "../shared";
 import { createPreviewPageResolver, type PreviewPageReply } from "../preview-page";
 import { createSettings } from "../settings";
 import { createExtensionSettingsStore, watchExtensionSettings } from "../extension-settings";
+import { createExtensionAccounts } from "../extension-accounts";
 
 export default defineContentScript({
   matches: SITE_MATCHES,
@@ -32,6 +33,7 @@ export default defineContentScript({
         return reply?.page ?? null;
       }),
       settings,
+      createExtensionAccounts(),
     );
   },
 });

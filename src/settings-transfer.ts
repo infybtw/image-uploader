@@ -18,7 +18,8 @@ export function createSettingsBackup(settings: Settings, exportedAt = new Date()
     format: SETTINGS_BACKUP_FORMAT,
     version: SETTINGS_BACKUP_VERSION,
     exportedAt: exportedAt.toISOString(),
-    settings: { ...settings },
+    // Explicitly allow only feature settings; account data must never be exported.
+    settings: normalizeSettings(settings),
   };
 }
 
