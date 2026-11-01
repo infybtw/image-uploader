@@ -16,7 +16,14 @@ colors:
   focus: "#a78bfa"
   notice-border: "#7160ec"
   kick-focus: "#53fc18"
+  beta-background: "#facc151a"
+  beta-border: "#facc1533"
+  beta-text: "#fde047"
 typography:
+  account-title:
+    fontFamily: "system-ui, sans-serif"
+    fontSize: "18px"
+    fontWeight: 600
   title:
     fontFamily: "system-ui, sans-serif"
     fontSize: "14px"
@@ -86,6 +93,10 @@ The mark is neutral; purple remains an existing UI accent, not a new logo color.
 
 Use the incumbent system-ui stack, with settings title, body, and hint roles above. Labels retain their existing medium weight. Floating notices use the same stack at (14px/1.5); chat-mounted notices use (12px/1.4). No display face or custom font has been introduced.
 
+The Twir account heading is 18px/600. A separate full-width notice at the top of the Accounts tab, above all provider sections, reads **Sign-in is in beta.** (12px/1.5, 8px 12px padding, 6px radius). It has a translucent yellow background, a subtle 1px border, yellow text, and an 18px decorative warning-triangle SVG. This notice belongs to the whole tab, not to Twir. It stays visible in every connection state, including the userscript limitation, and uses `beta-background`, `beta-border`, and `beta-text`, not the error palette. Keep the rest of Accounts minimal.
+
+Passive account-status failures do not add error copy or permanently disable Sign in. Preserve the last known account state without treating an unknown status as signed out. Explicit sign-in and sign-out errors remain inline, and successful action state remains visible even if the following status refresh fails.
+
 ## Layout
 
 Settings retain an anchored panel with viewport clearance (8px), maximum width `calc(100vw - 16px)`, and maximum height `calc(100dvh - 16px)`. The content region scrolls; tabs are General, Filters, Accounts, and Backup, in that order. Use the extracted spacing roles without imposing a new global grid or breakpoint system. Floating notices remain (360px) wide, capped at `calc(100vw - 40px)`; chat-mounted notices fill their host width.
@@ -102,7 +113,7 @@ The mark shares a (32×32) viewBox across `src/brand.ts`, `public/icon/icon.svg`
 
 - **Navigation:** preserve the Twitch button (30×30px, control radius, transparent rest background) and Kick button (36×36px, Kick radius, control background), including their existing hover and focus treatments. Both expose “Viewer Companion settings” as their accessible name; the decorative SVG stays hidden from assistive technology.
 - **Settings:** preserve the card, tab order, toggles, fields, backup review, and immediate-save behavior. Primary and secondary actions retain their existing states; textareas retain visible focus. Sidecar snippets are visual extracts, not replacement production components.
-- **Accounts:** a separate tab for platform connections, currently Twir only. It inherits the settings surface, medium-weight heading, muted status copy, purple primary action, secondary actions, focus rings, and disabled treatment; no new visual vocabulary. The Twir section stacks its heading, public-image disclosure, connection state, bundled-permission disclosure, wrapping action row, and feedback below the actions. Checking connection disables Connect Twir; disconnected offers Connect Twir; connecting shows a disabled Connecting… action with an available Cancel sign-in; connected shows Disconnect; expired authorization shows Reconnect Twir and Disconnect with the existing error treatment and an explicit no-anonymous-fallback message. Status and feedback use polite live regions. Disconnect feedback distinguishes confirmed revocation from local-only disconnection, and sign-in failures appear inline. The userscript shows its version limitation without connection controls or the permission disclosure. Preserve the viewport-fitting shell, scrollable body, and available tabs and close control at narrow widths; the separate tab leaves room for future connections without presenting unimplemented providers.
+- **Accounts:** a separate tab for platform connections, currently Twir only. It inherits the settings surface, medium-weight heading, muted status copy, purple primary action, secondary actions, focus rings, and disabled treatment; no new visual vocabulary. Keep the default view to the Twir heading and Sign in button, with no explanatory paragraphs or settings-save footer. Public-image and bundled-permission details remain in README.md and Twir's consent flow. Empty status and feedback paragraphs take no space. Checking connection disables Sign in; connecting shows a disabled Signing in… action with an available Cancel sign-in; connected shows Signed in and Sign out; expired authorization shows Sign in again and Sign out with the existing error treatment and a short explanation that uploads are paused. Status and feedback use polite live regions. Sign-out feedback distinguishes confirmed revocation from local-only disconnection, and sign-in failures appear inline. The userscript shows a short extension requirement without connection controls. Preserve the viewport-fitting shell, scrollable body, and available tabs and close control at narrow widths; the separate tab leaves room for future connections without presenting unimplemented providers.
 - **Upload notice:** preserve the floating/chat variants, host-variable fallbacks, link and copy controls, and current reduced-motion behavior. The rebrand changes identity, not notification timing or interaction.
 - **Assets:** committed PNGs at (16, 32, 48, 96, 128px) are rasterizations of the original authored `public/icon/icon.svg`, not downloaded or traced third-party artwork. Optional regeneration is `bun run build:icons`, requiring FFmpeg with librsvg support. Regular builds consume committed assets and do not require those tools.
 

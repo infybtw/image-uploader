@@ -270,8 +270,13 @@ function buildPanel(doc: Document, settings: SettingsController, accounts?: Acco
     textarea:focus-visible { outline: 2px solid #a78bfa; outline-offset: 1px; }
     .backup { display: flex; flex-direction: column; gap: 16px; }
     .account { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
-    .account > strong { font-size: 13px; font-weight: 500; }
+    .account > strong { font-size: 18px; font-weight: 600; }
+    .accounts-beta { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 8px 12px;
+      border: 1px solid #facc1533; border-radius: 6px; background: #facc151a; color: #fde047;
+      font-size: 12px; line-height: 1.5; }
+    .accounts-beta svg { flex: 0 0 auto; }
     .account .status { overflow-wrap: anywhere; }
+    .account .status:empty { display: none; }
     .backup-copy, .review-copy { display: flex; flex-direction: column; gap: 4px; }
     .backup-copy strong, .review-copy strong { font-size: 13px; font-weight: 500; }
     .backup-copy small, .review-copy small { color: #a1a1aa; font-size: 12px; line-height: 1.5; }
@@ -328,6 +333,9 @@ function buildPanel(doc: Document, settings: SettingsController, accounts?: Acco
   panels.className = "panels";
   const tabs: HTMLButtonElement[] = [];
   const tabPanels: HTMLElement[] = [];
+  const note = doc.createElement("p");
+  note.className = "note";
+  note.textContent = "Changes apply immediately and are saved in this browser.";
   const selectTab = (index: number) => {
     tabs.forEach((tab, position) => {
       const selected = position === index;
@@ -335,6 +343,7 @@ function buildPanel(doc: Document, settings: SettingsController, accounts?: Acco
       tab.tabIndex = selected ? 0 : -1;
       tabPanels[position]!.hidden = !selected;
     });
+    note.hidden = tabs[index]?.id === "settings-tab-accounts";
     panels.scrollTop = 0;
   };
   for (const [id, label] of [
@@ -483,8 +492,29 @@ function buildPanel(doc: Document, settings: SettingsController, accounts?: Acco
   previewSettings.append(previews.row, fieldset);
   tabPanels[0]!.append(previewSettings, autoInsert.row);
   tabPanels[1]!.append(bots.row, users.label, domains.label);
+  const accountsBeta = doc.createElement("p");
+  accountsBeta.id = "settings-accounts-beta";
+  accountsBeta.className = "accounts-beta";
+  const warningIcon = doc.createElementNS(SVG_NS, "svg");
+  warningIcon.setAttribute("width", "18");
+  warningIcon.setAttribute("height", "18");
+  warningIcon.setAttribute("viewBox", "0 0 24 24");
+  warningIcon.setAttribute("fill", "none");
+  warningIcon.setAttribute("stroke", "currentColor");
+  warningIcon.setAttribute("stroke-width", "2");
+  warningIcon.setAttribute("stroke-linecap", "round");
+  warningIcon.setAttribute("stroke-linejoin", "round");
+  warningIcon.setAttribute("aria-hidden", "true");
+  warningIcon.setAttribute("focusable", "false");
+  const warningPath = doc.createElementNS(SVG_NS, "path");
+  warningPath.setAttribute("d", "M12 3 2 21h20L12 3ZM12 9v4m0 4h.01");
+  warningIcon.append(warningPath);
+  const betaCopy = doc.createElement("span");
+  betaCopy.textContent = "Sign-in is in beta.";
+  accountsBeta.append(warningIcon, betaCopy);
   const accountUi = createAccountsUi(doc, accounts);
-  tabPanels[2]!.append(accountUi.section);
+  tabPanels[2]!.setAttribute("aria-describedby", accountsBeta.id);
+  tabPanels[2]!.append(accountsBeta, accountUi.section);
 
   const backup = doc.createElement("section");
   backup.className = "backup";
@@ -623,10 +653,6 @@ function buildPanel(doc: Document, settings: SettingsController, accounts?: Acco
     clearReview(true);
     setStatus("");
   });
-
-  const note = doc.createElement("p");
-  note.className = "note";
-  note.textContent = "Changes apply immediately and are saved in this browser.";
 
   card.append(header, tabList, panels, note);
   root.append(style, card);

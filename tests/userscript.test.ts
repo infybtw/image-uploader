@@ -154,7 +154,7 @@ test("userscript is a self-contained installable bundle without extension runtim
     expect(script).not.toMatch(/chrome\.runtime|browser\.runtime|__UPLOAD_TIMEOUT_MS__/);
     expect(script).toContain("insertText");
     expect(script).toContain("Preview links in chat");
-    expect(script).toContain("Not available in the userscript version");
+    expect(script).toContain("Sign-in requires the Chrome or Firefox extension");
     expect(script).not.toContain("twirOAuthSession");
     expect(script).not.toContain("/oauth/token");
     expect(script).not.toContain("/oauth/register");

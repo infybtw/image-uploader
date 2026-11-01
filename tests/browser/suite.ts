@@ -15,6 +15,7 @@ import {
 } from "../../src/settings-ui";
 import { MAX_SETTINGS_BACKUP_BYTES } from "../../src/settings-transfer";
 import type { Accounts, TwirAccountStatus } from "../../src/accounts";
+import { createAccountsUi } from "../../src/accounts-ui";
 import { checkImageViewer } from "./image-viewer";
 import { checkPreviewFilters } from "./preview-filters";
 import { checkPreviewScroll } from "./preview-scroll";
@@ -687,10 +688,41 @@ async function checkAccounts() {
             !panel.hidden && panel.textContent!.includes("Twir"),
             "Accounts tab is missing Twir",
           );
-          assert(panel.textContent!.includes("public"), "public-image disclosure missing");
+          assert(
+            panel.querySelector(".accounts-beta")?.textContent === "Sign-in is in beta.",
+            "account sign-in is not marked as beta",
+          );
+          assert(
+            getComputedStyle(panel.querySelector("#twir-account-title")!).fontSize === "18px",
+            "Twir title is not enlarged",
+          );
+          assert(
+            panel.firstElementChild?.className === "accounts-beta" &&
+              panel.querySelector(".accounts-beta")!.nextElementSibling?.className === "account" &&
+              panel.querySelector(".accounts-beta")!.getBoundingClientRect().bottom <=
+                panel.querySelector("#twir-account-title")!.getBoundingClientRect().top,
+            "beta notice must be global to Accounts and above Twir",
+          );
+          assert(
+            panel.querySelector('.accounts-beta svg[aria-hidden="true"] path') &&
+              getComputedStyle(panel.querySelector(".accounts-beta")!).backgroundColor.startsWith(
+                "rgba(",
+              ),
+            "beta notice needs a warning icon and translucent background",
+          );
+          assert(
+            root.querySelector<HTMLElement>(".note")!.hidden,
+            "settings hint clutters Accounts",
+          );
+          tabs.find((tab) => tab.textContent === "General")!.click();
+          assert(
+            !root.querySelector<HTMLElement>(".note")!.hidden,
+            "settings hint missing in General",
+          );
+          tabs.find((tab) => tab.textContent === "Accounts")!.click();
           if (!supported) {
             assert(
-              panel.textContent!.includes("Not available in the userscript version"),
+              panel.textContent!.includes("Sign-in requires the Chrome or Firefox extension"),
               "userscript limitation is not explained",
             );
             assert(!panel.querySelector("button"), "userscript offers nonfunctional sign-in");
@@ -699,8 +731,18 @@ async function checkAccounts() {
           const connect = panel.querySelector<HTMLButtonElement>(".primary")!;
           const disconnect = panel.querySelector<HTMLButtonElement>(".action:not(.primary)")!;
           assert(
-            connect.textContent === "Connect Twir" && !connect.disabled && disconnect.hidden,
+            connect.textContent === "Sign in" && !connect.disabled && disconnect.hidden,
             "incorrect disconnected state",
+          );
+          assert(
+            panel.textContent === "Sign-in is in beta.TwirSign inSign out",
+            "redundant account explanations remain",
+          );
+          assert(
+            [...panel.querySelectorAll<HTMLElement>(".status")].every(
+              (element) => element.getClientRects().length === 0,
+            ),
+            "empty account statuses take up space",
           );
           failConnect = true;
           connect.click();
@@ -715,14 +757,14 @@ async function checkAccounts() {
           connect.click();
           await tick();
           assert(
-            connect.hidden && !disconnect.hidden && panel.textContent!.includes("Connected ·"),
+            connect.hidden && !disconnect.hidden && panel.textContent!.includes("Signed in"),
             "successful connection not shown",
           );
           offline = true;
           disconnect.click();
           await tick();
           assert(
-            !connect.hidden && panel.textContent!.includes("could not confirm revocation"),
+            !connect.hidden && panel.textContent!.includes("Revoke access in Twir"),
             "offline logout was not explained",
           );
           status = "reconnect-required";
@@ -739,8 +781,8 @@ async function checkAccounts() {
             "#settings-panel-accounts .primary",
           )!;
           assert(
-            reconnect.textContent === "Reconnect Twir" &&
-              reopened.textContent!.includes("Nothing will be uploaded anonymously"),
+            reconnect.textContent === "Sign in again" &&
+              reopened.textContent!.includes("Uploads paused until you sign in again"),
             "expired connection has no recovery",
           );
           pending = Promise.withResolvers<void>();
@@ -773,6 +815,59 @@ async function checkAccounts() {
       },
     );
   }
+  await check(
+    "Accounts: failed status checks do not block sign-in or replace action feedback",
+    async () => {
+      let failConnect = true;
+      const ui = createAccountsUi(document, {
+        async status() {
+          throw new Error("Background unavailable");
+        },
+        async connect() {
+          if (failConnect) throw new Error("Sign-in failed. Try again.");
+        },
+        async disconnect() {
+          return { revoked: true };
+        },
+      });
+      document.body.append(ui.section);
+      try {
+        const connect = ui.section.querySelector<HTMLButtonElement>(".primary")!;
+        const disconnect = ui.section.querySelector<HTMLButtonElement>(".action:not(.primary)")!;
+        await tick();
+        assert(!connect.disabled && !connect.hidden, "failed status check blocks sign-in");
+        assert(
+          [...ui.section.querySelectorAll(".status")].every((element) => !element.textContent),
+          "passive status failure adds unexpected text or assumes the account is disconnected",
+        );
+        connect.click();
+        await tick();
+        assert(
+          !connect.disabled && ui.section.textContent!.includes("Sign-in failed. Try again."),
+          "status failure hides action error or prevents retry",
+        );
+        failConnect = false;
+        connect.click();
+        await tick();
+        assert(
+          connect.hidden && !disconnect.hidden && ui.section.textContent!.includes("Signed in"),
+          "status failure loses successful sign-in state",
+        );
+        disconnect.click();
+        await tick();
+        assert(
+          !connect.hidden &&
+            !connect.disabled &&
+            disconnect.hidden &&
+            ui.section.textContent!.includes("Signed out."),
+          "status failure loses successful sign-out state",
+        );
+      } finally {
+        ui.dispose();
+        ui.section.remove();
+      }
+    },
+  );
 }
 
 async function checkChatPreviews() {
