@@ -24,6 +24,17 @@ const build = await Bun.build({
 });
 if (!build.success) throw new AggregateError(build.logs, "Could not build the browser tests");
 const script = await build.outputs[0]!.text();
+const authBackground = await Bun.build({
+  entrypoints: [new URL("../tests/browser/auth-background.ts", import.meta.url).pathname],
+  target: "browser",
+  format: "iife",
+});
+if (!authBackground.success) throw new Error("Could not build the background account tests");
+const backgroundPath = join(extension, "background.js");
+await Bun.write(
+  backgroundPath,
+  `${await Bun.file(backgroundPath).text()}\n${await authBackground.outputs[0]!.text()}`,
+);
 type Result = { name: string; error?: string };
 const { promise, resolve, reject } = Promise.withResolvers<Result[]>();
 const ready = Promise.withResolvers<void>();
@@ -102,6 +113,7 @@ await Bun.write(
     manifest_version: 3,
     name: "ImageUploader browser tests",
     version: "0.0.0",
+    permissions: ["storage", "identity"],
     ...(target === "firefox"
       ? {
           browser_specific_settings: { gecko: { id: "imageuploader-tests@imageuploader.local" } },

@@ -214,3 +214,23 @@ describe("anonymous upload", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 });
+
+describe("authenticated upload", () => {
+  test("sends a bearer only to the fixed upload endpoint, without cookies or redirects", async () => {
+    const fetcher = mock(async (_url: string, _init: RequestInit) => Response.json(success));
+    await uploadImage(image, fetcher, 25_000, "access-token");
+    const [url, init] = fetcher.mock.calls[0]!;
+    expect(url).toBe(UPLOAD_ENDPOINT);
+    expect(init.headers).toEqual({ Authorization: "Bearer access-token" });
+    expect(init.credentials).toBe("omit");
+    expect(init.redirect).toBe("error");
+    expect(init.referrerPolicy).toBe("no-referrer");
+  });
+  test("does not retry a rejected authenticated upload or fall back to anonymous", async () => {
+    const fetcher = mock(async () => new Response(null, { status: 401 }));
+    await expect(uploadImage(image, fetcher, 25_000, "access-token")).rejects.toThrow(
+      "Reconnect Twir",
+    );
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+});

@@ -6,7 +6,7 @@
 
 **Viewer Companion** is a viewer-focused extension for **Twitch** and **Kick**, formerly ImageUploader. Its current tools cover image sharing, inline chat previews, full-screen viewing, and local image editing.
 
-Upload clipboard images on **twitch.tv** and **kick.com**, including subdomains. Available from **Mozilla Add-ons** for Firefox or as a **Tampermonkey / Violentmonkey userscript**. A standalone Chrome extension is **WIP**. Images are uploaded anonymously to [Twir Uploader](https://twir.app/uploader), and their links appear in a panel with a copy button above the Twitch or Kick chat input. Unrecognized chat layouts use a floating notification. Automatic link insertion is off by default; neither version sends messages for you.
+Upload clipboard images on **twitch.tv** and **kick.com**, including subdomains. Available from **Mozilla Add-ons** for Firefox or as a **Tampermonkey / Violentmonkey userscript**. A standalone Chrome extension is **WIP**. Images are uploaded to [Twir Uploader](https://twir.app/uploader), anonymously by default or to your connected Twir account in the browser extension. Their links appear in a panel with a copy button above the Twitch or Kick chat input. Unrecognized chat layouts use a floating notification. Automatic link insertion is off by default; neither version sends messages for you.
 
 ## Installation
 
@@ -52,7 +52,7 @@ Each uploaded link also has a clickable image preview above its copy row, in bot
 
 ### Settings
 
-Click the **VC** button next to the account controls in the Twitch top navigation or next to **Get KICKs** in the Kick header. The panel has **General**, **Filters**, and **Backup** tabs.
+Click the **VC** button next to the account controls in the Twitch top navigation or next to **Get KICKs** in the Kick header. The panel has **General**, **Filters**, **Accounts**, and **Backup** tabs.
 
 ![Viewer Companion General settings with chat previews, preview click behavior, and automatic link insertion controls](public/screenshots/settings-general.png)
 
@@ -70,7 +70,11 @@ Under **Filters** you can exclude:
 
 Exclusions save automatically and apply to existing and new messages without reloading the page. Empty lists exclude nothing. These filters affect chat thumbnails only, not your upload panel or image editor.
 
-Under **Backup**, **Export settings** downloads a JSON file containing all six settings, including the exclusion lists. **Import settings** accepts a file created by that export, shows a summary, and replaces every current setting only after you choose **Replace settings**. The backup contains no chats, drafts, uploads, or account data, and importing it does not send anything off the device. Backups made by ImageUploader remain compatible.
+Under **Accounts**, **Connect Twir** opens Twir's sign-in and consent window. This is optional and available only in the Chrome/Firefox extension; the userscript explains that account sign-in is unavailable and continues uploading anonymously. Once connected, new uploads, including edited images, are associated with your Twir account. Images are still public by link. Twir currently bundles upload and deletion rights in `files:edit`; Viewer Companion requests only that scope and does not delete files. No profile, chat, moderation, or dashboard permissions are requested.
+
+The extension remembers the connection across browser restarts. If Twir rejects the connection, uploads stop and **Reconnect Twir** becomes available; there is no silent anonymous fallback. Uploads also pause while sign-in is pending. **Cancel sign-in** invalidates the pending callback (you can close the Twir window). **Disconnect** clears local authorization and attempts to revoke both tokens at Twir. If revocation cannot be confirmed, the panel explains how to finish revoking access in Twir. Disconnecting does not delete images or undo an upload already in flight.
+
+Under **Backup**, **Export settings** downloads a JSON file containing all six settings, including the exclusion lists. **Import settings** accepts a file created by that export, shows a summary, and replaces every current setting only after you choose **Replace settings**. The backup contains no chats, drafts, uploads, OAuth clients, or tokens. Importing does not change your account connection or send anything off the device. Backups made by ImageUploader remain compatible.
 
 Settings are shared across Twitch and Kick by the extension. The userscript stores them in your userscript manager's storage, which is also shared across sites; if that storage is unavailable it falls back to the current site's local storage. No setting is uploaded anywhere.
 
@@ -107,12 +111,27 @@ Only one viewer opens at a time. It locks background scrolling, keeps keyboard f
 
 - Uploads use `POST https://twir.app/api/v1/uploader/files`, `multipart/form-data`, field `file`, and read the result from `data.link`.
 - Supported: PNG, JPEG, GIF, WebP, AVIF, and BMP, up to **25 MiB** per file. SVG is not supported.
-- Extension requests run in its background context with `credentials: "omit"`; userscript requests run through the userscript manager with `anonymous: true`. Neither uploads from the Twitch/Kick page context. No Twir login, tokens, or cookies are used, even if you are signed in elsewhere.
+- Extension requests run in its background context with `credentials: "omit"`; a connected account adds a bearer token only to Twir uploads. Userscript requests run through the userscript manager with `anonymous: true` and never use Twir tokens. Neither uploads from the Twitch/Kick page context or uses Twir cookies, even if you are signed in elsewhere. Twir's own sign-in window uses its normal website login.
 - The extension timeout is **60 seconds in Firefox**, **25 seconds in Chrome**; the userscript timeout is **60 seconds**. Interrupted uploads report an error without automatic retries. Twir controls API availability and upload limits.
 
 Pasting an image **immediately uploads it to the third-party service Twir**, where it becomes accessible via a public link. Do not paste confidential images. Closing a notification or undoing chat text does not delete the upload. Retention/deletion policies belong to [Twir](https://twir.app/privacy); anonymous upload management is not implemented.
 
 Both versions read images only from a trusted paste event in an editable field. They do not poll the clipboard, read browsing history, or store uploads. Filenames become `pasted-image.<format>`; image bytes and metadata are unchanged. Cookies, page URLs, and chat text are not sent to the API. There is no telemetry. Transmission of pasted images is declared by the Firefox extension as `personalCommunications`. Feature settings are stored locally and are never transmitted.
+
+### Account security (browser extensions only)
+
+- OAuth Authorization Code with PKCE S256, random one-time `state`, a ten-minute callback deadline, and exact callback validation. Uses `identity.launchWebAuthFlow` and the browser's `identity.getRedirectURL()`; the extension requires the `identity` permission.
+- Uses the configured Viewer Companion public OAuth app (`TWIR_CLIENT_ID` in `src/twir-auth.ts`); no per-installation client registration is performed. There is no embedded client secret or Viewer Companion backend. Authorization and token exchange target the REST resource `https://twir.app/api`, not MCP. Existing connections from a different client/callback require reconnection; their credentials remain bound to their original client for revocation.
+- Refresh tokens are stored in IndexedDB in the extension's background origin, separately from settings. Access tokens and pending PKCE state live in `browser.storage.session`, which is not exposed to content scripts. Tokens never enter website storage, page DOM, settings backups, or account-status replies. Authentication storage failures stop uploads rather than enabling anonymous fallback.
+- Refreshes are serialized across tabs and save the latest refresh token before updating the disposable access cache. Uploads are not automatically retried after a failure, and rejected authentication requires reconnection.
+- OAuth requests omit cookies and referrers, reject redirects, use fixed HTTPS endpoints, and time out after 15 seconds. Sign-in errors show the actual browser message or Twir's `error_description`; token failures also include the HTTP status. Known secrets, credential fields, URLs and opaque token-like values are redacted, and diagnostic length is bounded. Raw response bodies, error objects and stack traces are never rendered. Local recovery hints are used only when the provider supplies no description. Preview/metadata requests never receive an OAuth token.
+- Local credential storage is **not an encrypted operating-system keychain**. Isolation protects against website scripts, not malware with access to your browser profile or a compromised extension update. Do not export or share your browser profile.
+
+Configure the Twir application as a **public client** (`token_endpoint_auth_method: none`) with Authorization Code, refresh tokens, PKCE S256, and `files:edit`. Register each browser's exact `identity.getRedirectURL()` value as an allowed redirect URI; these are public configuration values, not secrets. In the extension background console, use `browser.identity.getRedirectURL()` in Firefox or `chrome.identity.getRedirectURL()` in Chrome (not the Twitch/Kick page console). Keep the trailing slash. Firefox's callback follows the fixed add-on ID. An unpacked Chrome build without a manifest key may have a different extension ID/callback on another installation path; register the actual development callback and the stable Chrome Web Store callback separately. Do not use wildcard callback matching or add a client secret to the bundle.
+
+For the Firefox add-on ID `twir-paste@imageuploader.local`, the callback verified in a real Firefox extension context is `https://aa89d2919eaae7f271cc07657fc1703f2b3c91b3.extensions.allizom.org/`.
+
+Tests use mocked Twir responses, plus real Chrome/Firefox extension contexts to check credential isolation. Before release, manually verify first-time Twir consent, an upload appearing in the connected account, persistence across browser restart, remote revocation/reconnection, and disconnect. Live Twir app configuration and token lifetimes remain controlled by Twir.
 
 Chat previews also inspect links inside rendered chat messages locally. Checking chat links makes normal browser image requests to their destinations (including redirects), even when the response is not an image. Upload-panel previews request images from Twir. These requests reveal your IP address and requested URL to the destination; cookies follow the browser's usual third-party cookie policy. They omit the page referrer. No chat text is uploaded or stored.
 

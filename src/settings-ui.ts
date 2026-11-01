@@ -1,5 +1,7 @@
 import type { Settings, SettingsController } from "./settings";
 import { BRAND_NAME, createBrandIcon } from "./brand";
+import type { Accounts } from "./accounts";
+import { createAccountsUi } from "./accounts-ui";
 import { normalizeDomainList, normalizeUserList } from "./preview-filters";
 import {
   MAX_SETTINGS_BACKUP_BYTES,
@@ -206,7 +208,7 @@ function describeSettings(settings: Settings): string {
   ].join(" · ");
 }
 
-function buildPanel(doc: Document, settings: SettingsController) {
+function buildPanel(doc: Document, settings: SettingsController, accounts?: Accounts) {
   const host = doc.createElement("div");
   host.setAttribute(SETTINGS_PANEL_ATTRIBUTE, "");
   host.style.cssText = "all:initial;position:fixed;z-index:2147483647;left:0;top:0";
@@ -229,7 +231,7 @@ function buildPanel(doc: Document, settings: SettingsController) {
       cursor: pointer; }
     button.close:hover { background: #27272a; color: #fafafa; }
     button:focus-visible, .choices input:focus-visible { outline: 2px solid #a78bfa; outline-offset: 2px; }
-    .tabs { display: flex; flex: 0 0 auto; gap: 24px; margin: 0 20px; border-bottom: 1px solid #3f3f46; }
+    .tabs { display: flex; flex: 0 0 auto; gap: clamp(12px, 4vw, 24px); margin: 0 20px; border-bottom: 1px solid #3f3f46; }
     .tab { min-height: 40px; padding: 8px 0; border: 0; border-bottom: 2px solid transparent;
       background: transparent; color: #a1a1aa; font: inherit; font-weight: 500; cursor: pointer; }
     .tab:hover { color: #fafafa; }
@@ -267,6 +269,9 @@ function buildPanel(doc: Document, settings: SettingsController) {
     textarea:hover { border-color: #71717a; }
     textarea:focus-visible { outline: 2px solid #a78bfa; outline-offset: 1px; }
     .backup { display: flex; flex-direction: column; gap: 16px; }
+    .account { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+    .account > strong { font-size: 13px; font-weight: 500; }
+    .account .status { overflow-wrap: anywhere; }
     .backup-copy, .review-copy { display: flex; flex-direction: column; gap: 4px; }
     .backup-copy strong, .review-copy strong { font-size: 13px; font-weight: 500; }
     .backup-copy small, .review-copy small { color: #a1a1aa; font-size: 12px; line-height: 1.5; }
@@ -335,6 +340,7 @@ function buildPanel(doc: Document, settings: SettingsController) {
   for (const [id, label] of [
     ["general", "General"],
     ["filters", "Filters"],
+    ["accounts", "Accounts"],
     ["backup", "Backup"],
   ] as const) {
     const tab = doc.createElement("button");
@@ -477,6 +483,8 @@ function buildPanel(doc: Document, settings: SettingsController) {
   previewSettings.append(previews.row, fieldset);
   tabPanels[0]!.append(previewSettings, autoInsert.row);
   tabPanels[1]!.append(bots.row, users.label, domains.label);
+  const accountUi = createAccountsUi(doc, accounts);
+  tabPanels[2]!.append(accountUi.section);
 
   const backup = doc.createElement("section");
   backup.className = "backup";
@@ -528,7 +536,7 @@ function buildPanel(doc: Document, settings: SettingsController) {
   status.setAttribute("aria-live", "polite");
 
   backup.append(backupCopy, actions, review, status, fileInput);
-  tabPanels[2]!.append(backup);
+  tabPanels[3]!.append(backup);
 
   let pendingImport: Settings | null = null;
   const setStatus = (message: string, tone: "info" | "error" = "info") => {
@@ -633,10 +641,10 @@ function buildPanel(doc: Document, settings: SettingsController) {
     for (const radio of radios) radio.checked = next.previewClick === radio.value;
   };
 
-  return { host, card, closeButton, firstInput: tabs[0]!, sync };
+  return { host, card, closeButton, firstInput: tabs[0]!, sync, dispose: accountUi.dispose };
 }
 
-function mount(doc: Document, site: Site, settings: SettingsController) {
+function mount(doc: Document, site: Site, settings: SettingsController, accounts?: Accounts) {
   let buttonHost: HTMLElement | null = null;
   let button: HTMLButtonElement | null = null;
   let panel: ReturnType<typeof buildPanel> | null = null;
@@ -690,7 +698,7 @@ function mount(doc: Document, site: Site, settings: SettingsController) {
     }
     const view = doc.defaultView;
     if (!view || !buttonHost || !button) return;
-    const created = buildPanel(doc, settings);
+    const created = buildPanel(doc, settings, accounts);
     panel = created;
     const { host, closeButton, firstInput } = created;
 
@@ -731,6 +739,7 @@ function mount(doc: Document, site: Site, settings: SettingsController) {
       if (closed) return;
       closed = true;
       unsubscribe();
+      created.dispose();
       resizeObserver.disconnect();
       view.removeEventListener("resize", place);
       doc.removeEventListener("scroll", place, true);
@@ -775,7 +784,11 @@ function mount(doc: Document, site: Site, settings: SettingsController) {
   };
 }
 
-export function registerSettingsUi(settings: SettingsController, hostname = location.hostname) {
+export function registerSettingsUi(
+  settings: SettingsController,
+  hostname = location.hostname,
+  accounts?: Accounts,
+) {
   if (typeof window === "undefined" || typeof document === "undefined") return () => {};
   try {
     if (window.top !== window) return () => {};
@@ -786,7 +799,7 @@ export function registerSettingsUi(settings: SettingsController, hostname = loca
   if (!site) return () => {};
   let dispose = () => {};
   const start = () => {
-    dispose = mount(document, site, settings);
+    dispose = mount(document, site, settings, accounts);
   };
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", start, { once: true });

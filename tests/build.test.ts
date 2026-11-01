@@ -5,6 +5,7 @@ import { buildExtension } from "../scripts/build";
 import commonManifest from "../extension/manifest.json";
 import firefoxSettings from "../extension/firefox.json";
 import chromeSettings from "../extension/chrome.json";
+import { TWIR_CLIENT_ID } from "../src/twir-auth";
 
 test("both browser builds produce self-contained extension directories", async () => {
   const directory = await mkdtemp("/tmp/opencode/imageuploader-build-");
@@ -39,6 +40,8 @@ test("both browser builds produce self-contained extension directories", async (
       const content = await Bun.file(join(outdir, "content-scripts/content.js")).text();
       expect(manifest.name).toBe(commonManifest.name);
       expect(background).not.toContain("__UPLOAD_TIMEOUT_MS__");
+      expect(background).toContain(TWIR_CLIENT_ID);
+      expect(content).not.toContain(TWIR_CLIENT_ID);
       expect(background).not.toContain("document.");
       expect(background).not.toContain("window.");
       expect(content).toContain("insertText");

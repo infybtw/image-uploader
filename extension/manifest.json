@@ -3,6 +3,6 @@
   "name": "Viewer Companion",
   "version": "1.0.1",
   "description": "Your Twitch and Kick chat companion: image uploads, inline previews, a full-screen viewer, and a built-in image editor.",
-  "permissions": ["storage"],
+  "permissions": ["storage", "identity"],
   "host_permissions": ["https://*/*", "http://*/*"]
 }
