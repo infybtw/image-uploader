@@ -19,7 +19,7 @@ Firefox handles extension updates through Mozilla Add-ons when automatic updates
 ### 2. Tampermonkey / Violentmonkey
 
 1. Install one userscript manager for your browser: [Tampermonkey](https://www.tampermonkey.net/) or [Violentmonkey](https://violentmonkey.github.io/get-it/).
-2. Open [the latest Viewer Companion userscript](https://github.com/infybtw/image-uploader/releases/latest/download/imageuploader.user.js).
+2. Open [the latest Viewer Companion userscript](https://github.com/infybtw/viewer-companion/releases/latest/download/imageuploader.user.js).
 3. In the userscript manager's installation page, click **Install** and make sure the script is enabled.
 4. Allow connections to **twir.app** for uploads and to linked websites for image previews if prompted.
 5. Reload any open **Twitch** or **Kick** tabs.
