@@ -7,6 +7,7 @@ import {
   getChatPreviewUrl,
   getUploaderImageUrl,
   isAllowedPage,
+  isTwitchPageUrl,
   validateImage,
 } from "../src/shared";
 
@@ -33,6 +34,26 @@ describe("chat preview candidates", () => {
     "not a URL",
   ]) {
     test(`ignores ${value}`, () => expect(getChatPreviewUrl(value)).toBeNull());
+  }
+});
+
+describe("Twitch page links", () => {
+  for (const url of [
+    "https://twitch.tv/name/clip/AbC",
+    "https://www.twitch.tv/videos/123",
+    "https://clips.twitch.tv/AbC",
+    "https://player.twitch.tv/?channel=name",
+  ]) {
+    test(`recognizes ${url}`, () => expect(isTwitchPageUrl(url)).toBe(true));
+  }
+  for (const url of [
+    "https://twitch.tv.evil.com/clip/AbC",
+    "https://nottwitch.tv/clip/AbC",
+    "https://example.com/twitch.tv/clip/AbC",
+    "javascript:alert(1)",
+    "not a url",
+  ]) {
+    test(`does not treat ${url} as Twitch`, () => expect(isTwitchPageUrl(url)).toBe(false));
   }
 });
 

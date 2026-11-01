@@ -1,4 +1,4 @@
-import { getChatPreviewUrl } from "./shared";
+import { getChatPreviewUrl, isTwitchPageUrl } from "./shared";
 import type { ResolvePreviewPage } from "./preview-page";
 import { bindImageViewer } from "./image-viewer";
 import type { PreviewClick } from "./settings";
@@ -97,6 +97,7 @@ export function observeChatPreviews(
 ): PreviewObserver {
   const selector = messageSelector(hostname) ?? "";
   if (!selector) return Object.assign(() => {}, { refresh() {} });
+  const isTwitch = hostname === "twitch.tv" || hostname.endsWith(".twitch.tv");
   const states = new WeakMap<
     Element,
     { key: string; host: HTMLElement | null; blockedSource: boolean }
@@ -116,7 +117,8 @@ export function observeChatPreviews(
     for (const link of blocked ? [] : message.querySelectorAll<HTMLAnchorElement>("a[href]")) {
       if (link.closest(selector) !== message || link.closest("[contenteditable]")) continue;
       const url = getChatPreviewUrl(link.href);
-      if (url && !filter.blocksUrl(url)) urls.add(url);
+      // On Twitch, the chat renders its own card for Twitch links.
+      if (url && !(isTwitch && isTwitchPageUrl(url)) && !filter.blocksUrl(url)) urls.add(url);
     }
     const key = [...urls].join("\n");
     const previous = states.get(message);
@@ -146,8 +148,7 @@ export function observeChatPreviews(
     host.style.cssText =
       "all:initial;display:block;box-sizing:border-box;width:100%;max-width:100%;margin-top:6px";
     // Previews are siblings of messages, so they need Twitch's chat gutter too.
-    if (hostname === "twitch.tv" || hostname.endsWith(".twitch.tv"))
-      host.style.paddingLeft = "20px";
+    if (isTwitch) host.style.paddingLeft = "20px";
     const shadow = host.attachShadow({ mode: "open" });
     const style = owner.createElement("style");
     style.textContent = `

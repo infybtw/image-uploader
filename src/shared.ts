@@ -34,6 +34,16 @@ export function getChatPreviewUrl(value: string): string | null {
   }
 }
 
+// Twitch already renders rich previews for its own pages, so ours would duplicate them.
+export function isTwitchPageUrl(value: string): boolean {
+  try {
+    const { hostname } = new URL(value);
+    return hostname === "twitch.tv" || hostname.endsWith(".twitch.tv");
+  } catch {
+    return false;
+  }
+}
+
 // Only Uploader files, never Twir pages, short links, or API endpoints.
 export function getUploaderImageUrl(value: string): string | null {
   try {

@@ -265,6 +265,21 @@ test("previews ignore unsafe URLs, outside-chat links, editors and lookalike sit
   stopUnsupported();
 });
 
+test("Twitch's own links are left to Twitch's native link cards", () => {
+  const { root, message, link } = previewChat();
+  link.href = "https://www.twitch.tv/guacamolemolly/clip/SleepyKawaii";
+  const clip = link.cloneNode(true) as HTMLAnchorElement;
+  clip.href = "https://clips.twitch.tv/AnotherClip";
+  message.append(clip);
+  const stop = observeChatPreviews(root, "www.twitch.tv");
+  try {
+    assert(!previewHost(message), "Twitch link previewed twice");
+    assert(message.contains(link) && message.contains(clip), "original links removed");
+  } finally {
+    stop();
+  }
+});
+
 test("duplicate URLs are collapsed and all unique HTTP(S) links are checked", () => {
   const { root, message, link } = previewChat();
   for (const url of [
