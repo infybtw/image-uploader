@@ -27,7 +27,7 @@ export function serializeSettingsBackup(settings: Settings, exportedAt = new Dat
 }
 
 export function settingsBackupFileName(date = new Date()): string {
-  return `imageuploader-settings-${date.toISOString().slice(0, 10)}.json`;
+  return `viewer-companion-settings-${date.toISOString().slice(0, 10)}.json`;
 }
 
 export function parseSettingsBackup(text: string): SettingsImport {
@@ -38,16 +38,16 @@ export function parseSettingsBackup(text: string): SettingsImport {
     return { ok: false, error: "This file is not valid JSON." };
   }
   if (!value || typeof value !== "object" || Array.isArray(value))
-    return { ok: false, error: "This is not an ImageUploader settings backup." };
+    return { ok: false, error: "This is not a Viewer Companion settings backup." };
   const record = value as Record<string, unknown>;
   if (record.format !== SETTINGS_BACKUP_FORMAT)
-    return { ok: false, error: "This is not an ImageUploader settings backup." };
+    return { ok: false, error: "This is not a Viewer Companion settings backup." };
   if (record.version !== SETTINGS_BACKUP_VERSION) {
     return {
       ok: false,
       error:
         typeof record.version === "number" && record.version > SETTINGS_BACKUP_VERSION
-          ? "This backup was made by a newer version of ImageUploader."
+          ? "This backup was made by a newer version of Viewer Companion."
           : "This backup uses an unsupported format.",
     };
   }

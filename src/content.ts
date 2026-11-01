@@ -101,7 +101,7 @@ export function registerPasteHandler(
               inserted ? AUTO_INSERT_DISMISS_MS : undefined,
             );
           } catch (error) {
-            console.error(`[ImageUploader] ${stage}`, error);
+            console.error(`[Viewer Companion] ${stage}`, error);
             notify(
               `${stage}: ${errorMessage(error)}${urls.length ? "\nImages already uploaded:" : ""}`,
               urls,

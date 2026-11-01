@@ -61,7 +61,7 @@ async function handleUpload(
     const url = await uploadImage("image" in message ? message.image : undefined);
     return { ok: true, url };
   } catch (error) {
-    console.error("[ImageUploader] Upload failed", error);
+    console.error("[Viewer Companion] Upload failed", error);
     return { ok: false, error: errorMessage(error) };
   } finally {
     activeTabs.delete(tabId);

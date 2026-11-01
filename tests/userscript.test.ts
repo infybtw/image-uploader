@@ -130,6 +130,8 @@ test("userscript is a self-contained installable bundle without extension runtim
     const script = await Bun.file(output).text();
     expect(script.startsWith("// ==UserScript==\n")).toBe(true);
     for (const line of [
+      "// @name         Viewer Companion",
+      "// @namespace    ImageUploader",
       `// @version      ${manifest.version}`,
       "// @updateURL    https://github.com/infybtw/image-uploader/releases/latest/download/imageuploader.meta.js",
       "// @downloadURL  https://github.com/infybtw/image-uploader/releases/latest/download/imageuploader.user.js",

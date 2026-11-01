@@ -28,7 +28,7 @@ describe("settings backup", () => {
       settings: saved,
     });
     expect(text.endsWith("\n")).toBe(true);
-    expect(settingsBackupFileName(date)).toBe("imageuploader-settings-2026-10-26.json");
+    expect(settingsBackupFileName(date)).toBe("viewer-companion-settings-2026-10-26.json");
   });
 
   test("round-trips an exported backup", () => {
@@ -66,8 +66,8 @@ describe("settings backup", () => {
 
   for (const [label, text, error] of [
     ["malformed JSON", "{", "not valid JSON"],
-    ["a JSON array", "[]", "not an ImageUploader"],
-    ["another product's file", '{"format":"other"}', "not an ImageUploader"],
+    ["a JSON array", "[]", "not a Viewer Companion"],
+    ["another product's file", '{"format":"other"}', "not a Viewer Companion"],
     [
       "a missing settings object",
       '{"format":"imageuploader-settings","version":1}',

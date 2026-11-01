@@ -79,7 +79,7 @@ export function createSettings(store: SettingsStore): SettingsController {
       emit();
     })
     .catch((error) => {
-      console.error("[ImageUploader] Could not load settings", error);
+      console.error("[Viewer Companion] Could not load settings", error);
     });
 
   return {
@@ -93,7 +93,7 @@ export function createSettings(store: SettingsStore): SettingsController {
       void Promise.resolve()
         .then(() => store.save(current))
         .catch((error) => {
-          console.error("[ImageUploader] Could not save settings", error);
+          console.error("[Viewer Companion] Could not save settings", error);
         });
     },
     replace(value) {
