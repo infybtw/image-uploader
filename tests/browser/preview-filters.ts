@@ -1,11 +1,11 @@
 import { observeChatPreviews } from "../../src/chat-previews";
 import { createSettings } from "../../src/settings";
+import { tick, waitFor } from "./preview-wait";
 
 type Check = (name: string, run: () => Promise<void>) => Promise<void>;
 function assert(value: unknown, message: string): asserts value {
   if (!value) throw new Error(message);
 }
-const tick = () => new Promise<void>((resolve) => window.setTimeout(resolve, 0));
 const preview = (message: Element) => {
   const sibling = message.nextElementSibling;
   if (sibling?.matches("[data-imageuploader-preview]")) return sibling as HTMLElement;
@@ -13,7 +13,8 @@ const preview = (message: Element) => {
   return row?.querySelector<HTMLElement>(":scope > [data-imageuploader-preview]") ?? null;
 };
 
-function fixture(hostname: string, username: string) {
+let fixtureId = 0;
+function fixture(hostname: string, username: string, path = "/preview-image") {
   const kick = hostname === "kick.com";
   const root = document.createElement("div");
   root.id = "chatroom-messages";
@@ -24,7 +25,7 @@ function fixture(hostname: string, username: string) {
   if (!kick) author.setAttribute("data-a-user", username);
   author.textContent = username;
   const link = document.createElement("a");
-  link.href = "https://images.example/photo.png";
+  link.href = `${location.origin}${path}?fixture=${++fixtureId}`;
   link.textContent = link.href;
   message.append(author, link);
   root.append(message);
@@ -44,7 +45,7 @@ export async function checkPreviewFilters(check: Check) {
         );
         const unsubscribe = settings.subscribe(() => stop.refresh());
         try {
-          assert(preview(message), "initial preview missing");
+          await waitFor(() => preview(message), "initial preview missing");
           settings.update({ blockedUsers: ["@SOMEUSER"] });
           assert(!preview(message), "existing excluded preview remains");
           assert(
@@ -60,8 +61,8 @@ export async function checkPreviewFilters(check: Check) {
           await tick();
           assert(!preview(next.message), "new message bypassed exclusion");
           settings.update({ blockedUsers: [] });
-          assert(
-            preview(message) && preview(next.message),
+          await waitFor(
+            () => preview(message) && preview(next.message),
             "removing exclusion did not restore previews",
           );
         } finally {
@@ -95,11 +96,21 @@ export async function checkPreviewFilters(check: Check) {
             settings.get(),
           );
           try {
-            assert(Boolean(preview(message)) !== hidden, `wrong bot classification for ${name}`);
+            if (hidden) {
+              await tick();
+              assert(!preview(message), `wrong bot classification for ${name}`);
+            } else {
+              await waitFor(() => preview(message), `missing preview for ${name}`);
+            }
             settings.update({ hideBots: false });
             stop.refresh();
-            assert(preview(message), "turning off bot filter did not restore preview");
+            await waitFor(() => preview(message), "turning off bot filter did not restore preview");
             settings.update({ hideBots: true });
+            stop.refresh();
+            assert(
+              Boolean(preview(message)) !== hidden,
+              `wrong bot classification after re-enabling the filter for ${name}`,
+            );
           } finally {
             stop();
           }
@@ -108,43 +119,40 @@ export async function checkPreviewFilters(check: Check) {
     );
   }
 
-  await check(
-    "domain exclusions skip only matching links, including subdomains, before requesting images",
-    async () => {
-      const settings = createSettings({
-        load: () => ({ blockedDomains: ["example.com"] }),
-        save: () => {},
-      });
-      await settings.ready;
-      const { root, message, link } = fixture("www.twitch.tv", "viewer");
-      link.href = "https://cdn.example.com/image.png";
-      const allowed = document.createElement("a");
-      allowed.href = "https://notexample.com/image.png";
-      message.append(allowed);
-      let requests = 0;
-      const stop = observeChatPreviews(
-        root,
-        "twitch.tv",
-        async () => {
-          requests++;
-          return null;
-        },
-        undefined,
-        () => settings.get(),
+  await check("domain exclusions skip only matching links before requesting images", async () => {
+    const settings = createSettings({
+      load: () => ({ blockedDomains: ["example.com"] }),
+      save: () => {},
+    });
+    await settings.ready;
+    const { root, message, link } = fixture("www.twitch.tv", "viewer");
+    const excluded = document.createElement("a");
+    excluded.href = "https://cdn.example.com/image.png";
+    message.append(excluded);
+    let requests = 0;
+    const stop = observeChatPreviews(
+      root,
+      "twitch.tv",
+      async () => {
+        requests++;
+        return null;
+      },
+      undefined,
+      () => settings.get(),
+    );
+    try {
+      await waitFor(() => preview(message), "allowed preview missing");
+      const images = preview(message)!.shadowRoot!.querySelectorAll("img");
+      assert(
+        images.length === 1 && images[0]!.src === link.href,
+        "excluded image created or allowed link hidden",
       );
-      try {
-        const images = preview(message)?.shadowRoot?.querySelectorAll("img");
-        assert(
-          images?.length === 1 && images[0]!.src === allowed.href,
-          "excluded image created or allowed link hidden",
-        );
-        assert(requests === 0, "blocked link requested metadata");
-        assert(message.contains(link) && message.contains(allowed), "original links removed");
-      } finally {
-        stop();
-      }
-    },
-  );
+      assert(requests === 0, "blocked link requested metadata");
+      assert(message.contains(link) && message.contains(excluded), "original links removed");
+    } finally {
+      stop();
+    }
+  });
 
   await check("unrelated exclusion edits do not recreate allowed previews", async () => {
     const settings = createSettings({ load: () => undefined, save: () => {} });
@@ -152,6 +160,7 @@ export async function checkPreviewFilters(check: Check) {
     const { root, message } = fixture("www.twitch.tv", "viewer");
     const stop = observeChatPreviews(root, "twitch.tv", undefined, undefined, () => settings.get());
     try {
+      await waitFor(() => preview(message), "initial preview missing");
       const host = preview(message);
       settings.update({ blockedUsers: ["unrelated"] });
       stop.refresh();
@@ -170,20 +179,22 @@ export async function checkPreviewFilters(check: Check) {
       save: () => {},
     });
     await settings.ready;
-    const { root, message } = fixture("www.twitch.tv", "viewer");
+    const { root, message } = fixture("www.twitch.tv", "viewer", "/preview-page");
+    let requests = 0;
     const stop = observeChatPreviews(
       root,
       "twitch.tv",
-      async () => "https://img.cdn.example/thumb.png",
+      async () => {
+        requests++;
+        return "https://img.cdn.example/thumb.png";
+      },
       undefined,
       () => settings.get(),
     );
     try {
-      const image = preview(message)!.shadowRoot!.querySelector("img")!;
-      const source = image.src;
-      image.dispatchEvent(new Event("error"));
+      await waitFor(() => requests === 1, "metadata not requested");
       await tick();
-      assert(image.src === source && !preview(message), "excluded metadata source was loaded");
+      assert(!preview(message), "excluded metadata source was loaded");
     } finally {
       stop();
     }
@@ -192,8 +203,8 @@ export async function checkPreviewFilters(check: Check) {
   await check("changing a domain exclusion removes and restores resolved thumbnails", async () => {
     const settings = createSettings({ load: () => undefined, save: () => {} });
     await settings.ready;
-    const { root, message } = fixture("www.twitch.tv", "viewer");
-    const source = "https://cdn.example/thumb.png";
+    const { root, message } = fixture("www.twitch.tv", "viewer", "/preview-page");
+    const source = `${location.origin}/preview-image?metadata=1`;
     const stop = observeChatPreviews(
       root,
       "twitch.tv",
@@ -202,24 +213,17 @@ export async function checkPreviewFilters(check: Check) {
       () => settings.get(),
     );
     try {
-      const loadMetadata = async () => {
-        preview(message)!.shadowRoot!.querySelector("img")!.dispatchEvent(new Event("error"));
-        await tick();
-      };
-      await loadMetadata();
-      assert(
-        preview(message)!.shadowRoot!.querySelector("img")!.src === source,
+      await waitFor(
+        () => preview(message)?.shadowRoot?.querySelector("img")?.src === source,
         "metadata not loaded",
       );
-      settings.update({ blockedDomains: ["cdn.example"] });
+      settings.update({ blockedDomains: ["127.0.0.1"] });
       stop.refresh();
-      await loadMetadata();
       assert(!preview(message), "existing excluded thumbnail retained");
       settings.update({ blockedDomains: [] });
       stop.refresh();
-      await loadMetadata();
-      assert(
-        preview(message)!.shadowRoot!.querySelector("img")!.src === source,
+      await waitFor(
+        () => preview(message)?.shadowRoot?.querySelector("img")?.src === source,
         "removed exclusion did not restore thumbnail",
       );
     } finally {
@@ -232,7 +236,7 @@ export async function checkPreviewFilters(check: Check) {
     async () => {
       const settings = createSettings({ load: () => undefined, save: () => {} });
       await settings.ready;
-      const { root, message, author } = fixture("www.twitch.tv", "viewer");
+      const { root, message, author } = fixture("www.twitch.tv", "viewer", "/preview-page");
       const pending = Promise.withResolvers<string | null>();
       const stop = observeChatPreviews(
         root,
@@ -243,20 +247,13 @@ export async function checkPreviewFilters(check: Check) {
       );
       const unsubscribe = settings.subscribe(() => stop.refresh());
       try {
-        const image = preview(message)!.shadowRoot!.querySelector("img")!;
-        const source = image.src;
-        image.dispatchEvent(new Event("error"));
         await tick();
         settings.update({ blockedUsers: ["viewer"] });
-        pending.resolve("https://images.example/late.png");
+        pending.resolve(`${location.origin}/preview-image?late=1`);
         await tick();
-        assert(
-          !preview(message) && image.src === source,
-          "late metadata restored excluded preview",
-        );
+        assert(!preview(message), "late metadata restored excluded preview");
         author.setAttribute("data-a-user", "other");
-        await tick();
-        assert(preview(message), "changed author did not restore preview");
+        await waitFor(() => preview(message), "changed author did not restore preview");
         author.setAttribute("data-a-user", "viewer");
         await tick();
         assert(!preview(message), "changed author bypassed exclusion");

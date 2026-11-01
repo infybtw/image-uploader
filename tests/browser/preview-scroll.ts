@@ -1,5 +1,6 @@
 import { observeChatPreviews } from "../../src/chat-previews";
 import type { ResolvePreviewPage } from "../../src/preview-page";
+import { waitFor } from "./preview-wait";
 
 type Check = (name: string, run: () => Promise<void>) => Promise<void>;
 function assert(value: unknown, message: string): asserts value {
@@ -13,6 +14,7 @@ const settle = async () => {
 const atBottom = (element: HTMLElement) =>
   Math.abs(element.scrollHeight - element.clientHeight - element.scrollTop) <= 1;
 
+let fixtureId = 0;
 function fixture(layout: string, resolvePage?: ResolvePreviewPage, historyHeight = 600) {
   const scroller = document.createElement("div");
   scroller.style.cssText =
@@ -30,10 +32,12 @@ function fixture(layout: string, resolvePage?: ResolvePreviewPage, historyHeight
     layout === "kick" ? "kick.com" : "www.twitch.tv",
     resolvePage,
   );
+  const preview = () => root.querySelector("[data-imageuploader-preview]");
   return {
     scroller,
     root,
-    append(count = 1) {
+    preview,
+    append(count = 1, path = "/preview-image") {
       const message = document.createElement("div");
       message.className =
         layout === "7tv"
@@ -44,7 +48,7 @@ function fixture(layout: string, resolvePage?: ResolvePreviewPage, historyHeight
       message.style.height = "24px";
       for (let index = 0; index < count; index++) {
         const link = document.createElement("a");
-        link.href = `${location.origin}/preview-image?image=${index}`;
+        link.href = `${location.origin}${path}?image=${index}&fixture=${++fixtureId}`;
         link.textContent = "image";
         message.append(link);
       }
@@ -74,12 +78,13 @@ export async function checkPreviewScroll(check: Check) {
       const chat = fixture(layout);
       try {
         chat.append();
-        // The host chat scrolls to the message before our MutationObserver runs.
+        // The host chat scrolls to the message before our preview finishes loading.
         chat.scroller.scrollTo({ top: chat.scroller.scrollHeight, behavior: "instant" });
+        await waitFor(chat.preview, "preview missing");
         await settle();
-        assert(chat.root.querySelector("[data-imageuploader-preview]"), "preview missing");
+        const preview = chat.preview();
+        assert(preview, "preview missing");
         assert(atBottom(chat.scroller), "preview was left below the chat viewport");
-        const preview = chat.root.querySelector("[data-imageuploader-preview]")!;
         assert(
           preview.getBoundingClientRect().bottom <=
             chat.scroller.getBoundingClientRect().bottom + 1,
@@ -95,6 +100,10 @@ export async function checkPreviewScroll(check: Check) {
       try {
         chat.scroller.scrollTo({ top: 100, behavior: "instant" });
         chat.append(2);
+        await waitFor(
+          () => chat.preview()?.shadowRoot?.querySelectorAll("img").length === 2,
+          "previews missing",
+        );
         await settle();
         assert(chat.scroller.scrollTop === 100, "preview pulled the reader down");
       } finally {
@@ -108,6 +117,10 @@ export async function checkPreviewScroll(check: Check) {
         chat.append(2);
         chat.append();
         chat.scroller.scrollTo({ top: chat.scroller.scrollHeight, behavior: "instant" });
+        await waitFor(
+          () => chat.root.querySelectorAll("[data-imageuploader-preview]").length === 2,
+          "batched previews missing",
+        );
         await settle();
         assert(atBottom(chat.scroller), "batched preview heights were not included");
       } finally {
@@ -120,6 +133,7 @@ export async function checkPreviewScroll(check: Check) {
     const chat = fixture("twitch");
     try {
       chat.append();
+      await waitFor(chat.preview, "preview missing");
       await settle();
       assert(atBottom(chat.scroller), "the new text line prevented preview autoscroll");
     } finally {
@@ -127,28 +141,31 @@ export async function checkPreviewScroll(check: Check) {
     }
   });
 
-  await check(
-    "scrolling up before the next frame cancels the final preview correction",
-    async () => {
-      const chat = fixture("twitch");
-      try {
-        chat.append();
-        chat.scroller.scrollTo({ top: chat.scroller.scrollHeight, behavior: "instant" });
-        await Promise.resolve();
-        assert(chat.root.querySelector("[data-imageuploader-preview]"), "preview not mounted yet");
-        chat.scroller.scrollTo({ top: 100, behavior: "instant" });
-        await settle();
-        assert(chat.scroller.scrollTop === 100, "pending frame pulled the reader back down");
-      } finally {
-        chat.close();
-      }
-    },
-  );
+  await check("scrolling up while metadata resolves leaves the reader in place", async () => {
+    const result = Promise.withResolvers<string | null>();
+    const chat = fixture("twitch", () => result.promise);
+    try {
+      chat.append(1, "/preview-page");
+      await settle();
+      chat.scroller.scrollTo({ top: 100, behavior: "instant" });
+      result.resolve(`${location.origin}/preview-image?metadata=scrolled`);
+      await waitFor(chat.preview, "late preview missing");
+      await settle();
+      assert(chat.scroller.scrollTop === 100, "pending frame pulled the reader back down");
+    } finally {
+      result.resolve(null);
+      chat.close();
+    }
+  });
 
   await check("previews follow the bottom when a short chat first starts overflowing", async () => {
     const chat = fixture("twitch", undefined, 0);
     try {
       chat.append(2);
+      await waitFor(
+        () => chat.preview()?.shadowRoot?.querySelectorAll("img").length === 2,
+        "previews missing",
+      );
       await settle();
       assert(chat.scroller.scrollHeight > chat.scroller.clientHeight, "fixture did not overflow");
       assert(atBottom(chat.scroller), "newly overflowing chat did not follow previews");
@@ -164,14 +181,14 @@ export async function checkPreviewScroll(check: Check) {
         const result = Promise.withResolvers<string | null>();
         const chat = fixture("twitch", () => result.promise);
         try {
-          chat.append();
-          chat.scroller.scrollTo({ top: chat.scroller.scrollHeight, behavior: "instant" });
+          chat.append(1, "/preview-page");
           await settle();
-          const host = chat.root.querySelector<HTMLElement>("[data-imageuploader-preview]")!;
-          host.shadowRoot!.querySelector("img")!.dispatchEvent(new Event("error"));
-          await settle();
-          if (readingHistory) chat.scroller.scrollTo({ top: 100, behavior: "instant" });
-          result.resolve(`${location.origin}/preview-image?metadata`);
+          chat.scroller.scrollTo({
+            top: readingHistory ? 100 : chat.scroller.scrollHeight,
+            behavior: "instant",
+          });
+          result.resolve(`${location.origin}/preview-image?metadata=${readingHistory}`);
+          await waitFor(chat.preview, "late preview missing");
           await settle();
           assert(
             readingHistory ? chat.scroller.scrollTop === 100 : atBottom(chat.scroller),

@@ -19,6 +19,7 @@ import { createAccountsUi } from "../../src/accounts-ui";
 import { checkImageViewer } from "./image-viewer";
 import { checkPreviewFilters } from "./preview-filters";
 import { checkPreviewScroll } from "./preview-scroll";
+import { waitFor } from "./preview-wait";
 import { checkImageEditor, editorFixture } from "./image-editor";
 import {
   createPreviewPageResolver,
@@ -97,7 +98,7 @@ function previewChat(hostname = "www.twitch.tv") {
   const message = document.createElement("div");
   message.className = hostname.endsWith("kick.com") ? "chat-entry" : "chat-line__message";
   const link = document.createElement("a");
-  link.href = "https://twir.app/u/AbC123";
+  link.href = `${location.origin}/preview-image?chat=1`;
   link.textContent = link.href;
   message.append(link);
   root.append(message);
@@ -169,10 +170,11 @@ test("PicDrisnya post metadata resolves to its image, not the HTML page", () => 
 });
 
 for (const hostname of ["www.twitch.tv", "kick.com"]) {
-  test(`${hostname}: Uploader thumbnail is below the unchanged message link`, () => {
+  check(`${hostname}: Uploader thumbnail is below the unchanged message link`, async () => {
     const { root, message, link } = previewChat(hostname);
     const stop = observeChatPreviews(root, hostname);
     try {
+      await waitFor(() => previewHost(message), "preview not rendered");
       const host = previewHost(message);
       assert(host && message.nextElementSibling === host, "preview not below message");
       assert(message.firstElementChild === link && link.textContent === link.href, "link changed");
@@ -202,7 +204,7 @@ for (const hostname of ["www.twitch.tv", "kick.com"]) {
   });
 }
 
-test("7TV messages mount previews outside the moderation slider", () => {
+check("7TV messages mount previews outside the moderation slider", async () => {
   const root = document.createElement("div");
   const row = document.createElement("div");
   row.className = "seventv-message";
@@ -216,7 +218,7 @@ test("7TV messages mount previews outside the moderation slider", () => {
   author.className = "seventv-chat-user-username";
   author.textContent = "viewer";
   const link = document.createElement("a");
-  link.href = "https://twir.app/u/7TVRow";
+  link.href = `${location.origin}/preview-image?chat=7tv`;
   link.textContent = link.href;
   message.append(author, link);
   wrapped.append(message);
@@ -225,6 +227,7 @@ test("7TV messages mount previews outside the moderation slider", () => {
   root.append(row);
   const stop = observeChatPreviews(root, "twitch.tv");
   try {
+    await waitFor(() => previewHost(message), "7TV preview not rendered");
     const host = previewHost(message);
     assert(host && host.parentElement === row, "preview not attached to the 7TV row");
     assert(!slider.contains(host), "preview remained inside the moderation slider");
@@ -280,14 +283,15 @@ test("Twitch's own links are left to Twitch's native link cards", () => {
   }
 });
 
-test("duplicate URLs are collapsed and all unique HTTP(S) links are checked", () => {
+check("duplicate URLs are collapsed and non-image responses leave no preview", async () => {
   const { root, message, link } = previewChat();
   for (const url of [
     link.href,
-    "https://example.com/page",
-    "https://images.example.com/photo.png",
-    "https://example.com/image?id=42&signature=abc",
-    "http://example.com/redirect",
+    `${location.origin}/preview-image?one=1`,
+    `${location.origin}/preview-image?one=1`,
+    `${location.origin}/preview-image?two=2`,
+    `${location.origin}/preview-image?image=42&signature=abc`,
+    `${location.origin}/preview-page`,
   ]) {
     const other = link.cloneNode(true) as HTMLAnchorElement;
     other.href = url;
@@ -295,13 +299,19 @@ test("duplicate URLs are collapsed and all unique HTTP(S) links are checked", ()
   }
   const stop = observeChatPreviews(root, "twitch.tv");
   try {
-    const shadow = previewHost(message)!.shadowRoot!;
-    const images = [...shadow.querySelectorAll("img")];
-    assert(images.length === 5, "unique links skipped or duplicate requested");
-    assert(images[3]!.src === "https://example.com/image?id=42&signature=abc", "query lost");
-    images[1]!.dispatchEvent(new Event("error"));
-    assert(shadow.querySelectorAll("img").length === 4, "non-image link retained");
-    assert(message.querySelectorAll("a").length === 6, "original links changed");
+    const images = () => [...(previewHost(message)?.shadowRoot?.querySelectorAll("img") ?? [])];
+    await waitFor(() => images().length === 4, "unique links skipped or previews missing");
+    assert(
+      images().filter((image) => image.src.includes("one=1")).length === 1,
+      "duplicate link rendered twice",
+    );
+    assert(
+      images().some(
+        (image) => image.src === `${location.origin}/preview-image?image=42&signature=abc`,
+      ),
+      "query lost",
+    );
+    assert(message.querySelectorAll("a").length === 7, "original links changed");
   } finally {
     stop();
   }
@@ -927,27 +937,9 @@ async function checkChatPreviews() {
         document.body.append(root);
         const stop = observeChatPreviews(root, "twitch.tv", resolve);
         try {
+          // The HTML page is never rendered as an image: only its thumbnail appears.
+          await waitFor(() => previewHost(message), "metadata preview not rendered");
           const image = previewHost(message)!.shadowRoot!.querySelector("img")!;
-          image.loading = "eager";
-          await new Promise<void>((resolve, reject) => {
-            const timeout = window.setTimeout(
-              () => reject(new Error("metadata image timed out")),
-              5000,
-            );
-            image.addEventListener(
-              "load",
-              () => {
-                window.clearTimeout(timeout);
-                resolve();
-              },
-              { once: true },
-            );
-            image.addEventListener("error", () => {
-              if (image.src === post) return; // HTML triggers the metadata fallback first.
-              window.clearTimeout(timeout);
-              reject(new Error("metadata image failed"));
-            });
-          });
           assert(
             image.src === `${location.origin}/preview-image?size=small&token=abc`,
             "wrong metadata image",
@@ -980,26 +972,26 @@ async function checkChatPreviews() {
     async () => {
       for (const action of ["edit", "stop"] as const) {
         const { root, message, link } = previewChat();
-        link.href = "https://img.hishi.icu/post/nw8nBYytbd";
+        link.href = `${location.origin}/preview-page?late=${action}`;
         const pending = Promise.withResolvers<string | null>();
         const stop = observeChatPreviews(root, "twitch.tv", () => pending.promise);
-        const oldImage = previewHost(message)!.shadowRoot!.querySelector("img")!;
-        const originalSource = oldImage.src;
         try {
-          oldImage.dispatchEvent(new Event("error"));
-          await tick();
-          if (action === "edit") link.href = "https://example.com/new.png";
+          await tick(); // Let the probe fail and the metadata request start.
+          assert(!previewHost(message), "HTML link rendered before metadata");
+          if (action === "edit") link.href = `${location.origin}/preview-image?new=${action}`;
           else stop();
           await tick();
-          pending.resolve("https://pic.hishi.icu/old.webp");
-          await tick();
-          assert(oldImage.src === originalSource, "stale metadata started loading");
-          if (action === "stop") assert(!previewHost(message), "stopped preview restored");
-          else
+          pending.resolve(`${location.origin}/preview-image?old=${action}`);
+          if (action === "stop") {
+            await tick();
+            assert(!previewHost(message), "stopped preview restored");
+          } else {
+            await waitFor(() => previewHost(message), "edited preview missing");
             assert(
               previewHost(message)?.shadowRoot?.querySelector("img")?.src === link.href,
-              "edited preview replaced",
+              "stale metadata replaced the edited preview",
             );
+          }
         } finally {
           stop();
         }
@@ -1011,7 +1003,7 @@ async function checkChatPreviews() {
     async () => {
       for (const html of [null, "<title>No image</title>"]) {
         const { root, message, link } = previewChat();
-        link.href = "https://img.hishi.icu/post/nw8nBYytbd";
+        link.href = `${location.origin}/preview-page?metadata=${html === null ? "null" : "empty"}`;
         let requests = 0;
         const resolve = createPreviewPageResolver(async () => {
           requests++;
@@ -1019,7 +1011,7 @@ async function checkChatPreviews() {
         });
         const stop = observeChatPreviews(root, "twitch.tv", resolve);
         try {
-          previewHost(message)!.shadowRoot!.querySelector("img")!.dispatchEvent(new Event("error"));
+          await waitFor(() => requests === 1, "metadata not requested");
           await tick();
           assert(!previewHost(message), "empty metadata left a preview");
           message.prepend(document.createTextNode("updated "));
@@ -1033,20 +1025,19 @@ async function checkChatPreviews() {
       }
     },
   );
-  await check("broken metadata images are removed without a fallback loop", async () => {
+  await check("broken metadata images never render or retry", async () => {
     const { root, message, link } = previewChat();
-    link.href = "https://any.example/article";
+    link.href = `${location.origin}/preview-page?broken=1`;
     let requests = 0;
     const stop = observeChatPreviews(root, "twitch.tv", async () => {
       requests++;
-      return "https://images.example/broken.webp";
+      return `${location.origin}/preview-page?broken-thumb`;
     });
     try {
-      const image = previewHost(message)!.shadowRoot!.querySelector("img")!;
-      image.dispatchEvent(new Event("error"));
-      await tick();
-      assert(image.src === "https://images.example/broken.webp", "metadata not applied");
-      image.dispatchEvent(new Event("error"));
+      await waitFor(() => requests === 1, "metadata not requested");
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 100));
+      assert(!previewHost(message), "broken metadata image rendered");
+      message.prepend(document.createTextNode("updated "));
       await tick();
       assert(!previewHost(message) && requests === 1, "failed metadata was retried");
       assert(link.parentElement === message, "original link removed");
@@ -1072,29 +1063,13 @@ async function checkChatPreviews() {
       });
       const stop = observeChatPreviews(root, "twitch.tv", resolve);
       try {
-        const shadow = previewHost(message)!.shadowRoot!;
-        const images = [...shadow.querySelectorAll("img")];
-        const loaded = await Promise.all(
-          images.map(
-            (image) =>
-              new Promise<boolean>((resolve, reject) => {
-                const timeout = window.setTimeout(
-                  () => reject(new Error("image load timed out")),
-                  5000,
-                );
-                const finish = (success: boolean) => {
-                  window.clearTimeout(timeout);
-                  resolve(success);
-                };
-                image.addEventListener("load", () => finish(true), { once: true });
-                image.addEventListener("error", () => finish(false), { once: true });
-                image.loading = "eager";
-              }),
-          ),
+        await waitFor(
+          () => previewHost(message)?.shadowRoot?.querySelectorAll("img").length === 2,
+          "direct images not rendered",
         );
+        const shadow = previewHost(message)!.shadowRoot!;
         await resolve(`${location.origin}/preview-page`);
         await tick();
-        assert(loaded[0] && loaded[1] && !loaded[2], "response type detection failed");
         assert(requests === 1, "direct images triggered metadata requests");
         assert(shadow.querySelectorAll("img").length === 2, "HTML response left a preview");
         assert(message.querySelectorAll("a").length === 3, "original links changed");
@@ -1113,16 +1088,14 @@ async function checkChatPreviews() {
       const { root, message, link } = previewChat();
       const stop = observeChatPreviews(root, "twitch.tv");
       try {
-        await tick();
+        await waitFor(() => previewHost(message), "initial preview missing");
         const first = previewHost(message);
         message.prepend(document.createTextNode("edited message "));
         await tick();
         assert(previewHost(message) === first, "unrelated mutations recreated preview");
-        link.href = "http://twir.app/u/Changed?tracking=1#fragment";
-        await tick();
-        assert(
-          previewHost(message)?.shadowRoot?.querySelector("img")?.src ===
-            "http://twir.app/u/Changed?tracking=1#fragment",
+        link.href = `${location.origin}/preview-image?changed=1&tracking=1#fragment`;
+        await waitFor(
+          () => previewHost(message)?.shadowRoot?.querySelector("img")?.src === link.href,
           "edited URL ignored",
         );
         link.remove();
@@ -1131,12 +1104,13 @@ async function checkChatPreviews() {
         root.replaceChildren();
         const replacement = previewChat();
         root.append(replacement.message);
-        await tick();
-        assert(previewHost(replacement.message), "remounted chat ignored");
+        await waitFor(() => previewHost(replacement.message), "remounted chat ignored");
         const restored = previewHost(replacement.message)!;
         restored.remove();
-        await tick();
-        assert(previewHost(replacement.message) === restored, "removed preview not restored");
+        await waitFor(
+          () => previewHost(replacement.message) === restored,
+          "removed preview not restored",
+        );
         assert(
           root.querySelectorAll("[data-imageuploader-preview]").length === 1,
           "removed preview was duplicated",
@@ -1146,11 +1120,11 @@ async function checkChatPreviews() {
       }
     },
   );
-  await check("removing a message removes its detached preview", async () => {
+  await check("removing a message removes its preview", async () => {
     const { root, message } = previewChat();
     const stop = observeChatPreviews(root, "twitch.tv");
     try {
-      assert(previewHost(message), "initial preview missing");
+      await waitFor(() => previewHost(message), "initial preview missing");
       message.remove();
       await tick();
       assert(!root.querySelector("[data-imageuploader-preview]"), "message removal left a preview");
@@ -1158,16 +1132,16 @@ async function checkChatPreviews() {
       stop();
     }
   });
-  await check("failed images disappear without retries or removing the original link", async () => {
+  await check("unresolvable links never render and are not retried", async () => {
     const { root, message, link } = previewChat();
+    link.href = `${location.origin}/preview-page?unresolvable=1`;
     const stop = observeChatPreviews(root, "twitch.tv");
     try {
-      previewHost(message)!.shadowRoot!.querySelector("img")!.dispatchEvent(new Event("error"));
-      await tick();
-      assert(!previewHost(message), "broken image retained");
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 100));
+      assert(!previewHost(message), "non-image link rendered");
       message.prepend(document.createTextNode("updated "));
       await tick();
-      assert(!previewHost(message), "broken image retried");
+      assert(!previewHost(message), "non-image link retried");
       assert(link.parentElement === message, "original link removed");
     } finally {
       stop();

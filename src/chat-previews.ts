@@ -77,6 +77,7 @@ function hasBotBadge(message: Element): boolean {
 }
 
 type PreviewObserver = (() => void) & { refresh(): void };
+type MessageState = { key: string; host: HTMLElement | null; blockedSource: boolean };
 
 function messageSelector(hostname: string): string | null {
   if (hostname === "twitch.tv" || hostname.endsWith(".twitch.tv")) {
@@ -98,10 +99,7 @@ export function observeChatPreviews(
   const selector = messageSelector(hostname) ?? "";
   if (!selector) return Object.assign(() => {}, { refresh() {} });
   const isTwitch = hostname === "twitch.tv" || hostname.endsWith(".twitch.tv");
-  const states = new WeakMap<
-    Element,
-    { key: string; host: HTMLElement | null; blockedSource: boolean }
-  >();
+  const states = new WeakMap<Element, MessageState>();
   const hostMessages = new WeakMap<HTMLElement, Element>();
   const hosts = new Set<HTMLElement>();
   const owner = root.ownerDocument ?? (root as Document);
@@ -139,10 +137,42 @@ export function observeChatPreviews(
     }
     if (previous?.host) scroll.preserve(message, () => previous.host!.remove());
     if (previous?.host) hosts.delete(previous.host);
-    const state = { key, host: null as HTMLElement | null, blockedSource: false };
+    const state: MessageState = { key, host: null, blockedSource: false };
     states.set(message, state);
-    if (!urls.size) return;
+    // Resolve every preview before rendering it: an HTML link would otherwise show
+    // a broken (black) image box until its metadata thumbnail arrives.
+    for (const url of urls) void addResolvedPreview(message, state, url);
+  }
 
+  function isCurrent(message: Element, state: MessageState): boolean {
+    return !stopped && states.get(message) === state && root.contains(message);
+  }
+
+  function createPreviewImage(): HTMLImageElement {
+    const image = owner.createElement("img");
+    image.alt = "Image preview";
+    image.decoding = "async";
+    image.referrerPolicy = "no-referrer";
+    return image;
+  }
+
+  // Load offscreen first so the rendered preview never flashes an empty frame.
+  function loadImage(image: HTMLImageElement, source: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      const finish = (loaded: boolean) => {
+        image.removeEventListener("load", onLoad);
+        image.removeEventListener("error", onError);
+        resolve(loaded);
+      };
+      const onLoad = () => finish(true);
+      const onError = () => finish(false);
+      image.addEventListener("load", onLoad);
+      image.addEventListener("error", onError);
+      image.src = source;
+    });
+  }
+
+  function createHost(): HTMLElement {
     const host = owner.createElement("div");
     host.setAttribute(PREVIEW_ATTRIBUTE, "");
     host.style.cssText =
@@ -158,78 +188,66 @@ export function observeChatPreviews(
       img { display:block; width:100%; height:160px; object-fit:contain; background:#80808018; }
     `;
     shadow.append(style);
-    for (const url of urls) {
-      const link = owner.createElement("a");
-      link.href = url;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      const image = owner.createElement("img");
-      image.alt = "Image preview";
-      image.loading = "lazy";
-      image.decoding = "async";
-      image.referrerPolicy = "no-referrer";
-      bindImageViewer(link, image, getClickAction);
-      const remove = () => {
-        scroll.preserve(message, () => {
-          link.remove();
-          if (!shadow.querySelector("a")) {
-            host.remove();
-            state.host = null; // Do not retry broken links on every chat mutation.
-            hosts.delete(host);
-            hostMessages.delete(host);
-          }
-        });
-      };
-      const current = () =>
-        !stopped &&
-        states.get(message) === state &&
-        state.host === host &&
-        isPreviewMounted(host, message) &&
-        root.contains(message);
-      image.addEventListener(
-        "error",
-        () => {
-          if (!current()) return;
-          if (!resolvePage) {
-            remove();
-            return;
-          }
-          scroll.preserve(message, () => {
-            link.style.display = "none";
-          });
-          void Promise.resolve()
-            .then(() => (current() ? resolvePage(url) : null))
-            .then((imageUrl) => {
-              // Edited/deleted messages and stopped observers must not restore old previews.
-              if (!current()) return;
-              const source = imageUrl && getChatPreviewUrl(imageUrl);
-              const blockedSource = Boolean(source && filter.blocksUrl(source));
-              if (blockedSource) state.blockedSource = true;
-              if (!source || source === url || blockedSource) {
-                remove();
-                return;
-              }
-              image.addEventListener("error", remove, { once: true });
-              scroll.preserve(message, () => {
-                link.style.removeProperty("display");
-                image.src = source;
-              });
-            })
-            .catch(remove);
-        },
-        { once: true },
-      );
-      image.src = url;
-      link.append(image);
-      shadow.append(link);
-    }
-    if (!scroll.preserve(message, () => mountPreview(host, message))) {
-      host.remove();
+    return host;
+  }
+
+  function addPreview(message: Element, state: MessageState, image: HTMLImageElement, url: string) {
+    const link = owner.createElement("a");
+    link.href = url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    image.loading = "lazy";
+    bindImageViewer(link, image, getClickAction);
+    link.append(image);
+    let host = state.host;
+    const remove = () => {
+      scroll.preserve(message, () => {
+        link.remove();
+        if (host && !host.shadowRoot!.querySelector("a")) {
+          host.remove();
+          state.host = null; // Do not retry broken links on every chat mutation.
+          hosts.delete(host);
+          hostMessages.delete(host);
+        }
+      });
+    };
+    image.addEventListener("error", remove, { once: true });
+    if (!host) {
+      host = createHost();
+      host.shadowRoot!.append(link);
+      if (!scroll.preserve(message, () => mountPreview(host!, message))) {
+        host.remove();
+        return;
+      }
+      state.host = host;
+      hosts.add(host);
+      hostMessages.set(host, message);
       return;
     }
-    state.host = host;
-    hosts.add(host);
-    hostMessages.set(host, message);
+    scroll.preserve(message, () => host!.shadowRoot!.append(link));
+    if (!isPreviewMounted(host, message))
+      scroll.preserve(message, () => mountPreview(host!, message));
+  }
+
+  async function addResolvedPreview(message: Element, state: MessageState, url: string) {
+    try {
+      const image = createPreviewImage();
+      if (!(await loadImage(image, url))) {
+        if (!isCurrent(message, state) || !resolvePage) return;
+        const resolved = await resolvePage(url);
+        // Edited/deleted messages and stopped observers must not restore old previews.
+        if (!isCurrent(message, state)) return;
+        const source = resolved && getChatPreviewUrl(resolved);
+        const blockedSource = Boolean(source && filter.blocksUrl(source));
+        if (blockedSource) state.blockedSource = true;
+        if (!source || source === url || blockedSource) return;
+        if (!(await loadImage(image, source))) return;
+      }
+      if (!isCurrent(message, state)) return;
+      addPreview(message, state, image, url);
+    } catch {
+      // A failed lookup renders nothing instead of a broken image placeholder.
+    }
   }
 
   function collect(element: Element, messages: Set<Element>) {
