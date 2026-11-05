@@ -1,4 +1,5 @@
 import { createCopyButton, type WriteText } from "./copy-button";
+import { observeSend, type Editor } from "./editor";
 import { mountNotice } from "./notice-placement";
 import { getUploaderImageUrl } from "./shared";
 import { bindImageViewer } from "./image-viewer";
@@ -8,6 +9,11 @@ import { BRAND_NAME } from "./brand";
 const COPY_DISMISS_DELAY = 3_000;
 let latestNoticeId = 0;
 let dismissActiveNotice: (() => void) | undefined;
+
+export interface NoticeUpdateOptions {
+  // Auto-inserted links stay visible until the user submits that message.
+  dismissOnSend?: Editor;
+}
 
 export function createNotice(
   writeText?: WriteText,
@@ -65,6 +71,7 @@ export function createNotice(
   `;
   let unmount = () => {};
   let dismissTimer: number | undefined;
+  let stopSending: (() => void) | undefined;
   let closeEditor: (() => void) | undefined;
   let copyButtons: ReturnType<typeof createCopyButton>[] = [];
   const clearCopyButtons = () => {
@@ -73,6 +80,8 @@ export function createNotice(
   };
   const dismiss = () => {
     closeEditor?.();
+    stopSending?.();
+    stopSending = undefined;
     window.clearTimeout(dismissTimer);
     clearCopyButtons();
     unmount();
@@ -120,10 +129,17 @@ export function createNotice(
   dismissActiveNotice = dismiss;
   unmount = mountNotice(host, chatInput);
 
-  const notify = (message: string, urls: string[] = [], persistent = false, dismissIn?: number) => {
+  const notify = (
+    message: string,
+    urls: string[] = [],
+    persistent = false,
+    options: NoticeUpdateOptions = {},
+  ) => {
     // Late upload results must not bring back a superseded notification.
     if (noticeId !== latestNoticeId) return;
     cancelDismiss();
+    stopSending?.();
+    stopSending = undefined;
     clearCopyButtons();
     dismissActiveNotice = dismiss;
     if (!host.isConnected) {
@@ -206,7 +222,7 @@ export function createNotice(
       upload.append(row);
       links.append(upload);
     }
-    if (dismissIn) dismissAfter(dismissIn);
+    if (options.dismissOnSend) stopSending = observeSend(options.dismissOnSend, dismiss);
     else if (!persistent) dismissTimer = window.setTimeout(dismiss, 8_000);
   };
   return notify;

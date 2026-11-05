@@ -43,6 +43,43 @@ export function findEditor(target: EventTarget | null): Editor | null {
   return editor;
 }
 
+// Twitch sends on Enter and uses Shift+Enter for a newline. Kick's send button
+// sits in the same composer, so watch both without touching the message itself.
+const SEND_BUTTON =
+  'button[type="submit"], [data-a-target="chat-send-button"], [data-testid="send-message-button"], [aria-label="Send"]';
+
+export function observeSend(editor: Editor, onSend: () => void): () => void {
+  const doc = editor.ownerDocument;
+  const container = editor.closest(".chat-input, #chatroom-footer");
+  const scope =
+    container && container !== editor ? container : (editor.parentElement ?? doc.documentElement);
+  const onKeyDown = (event: Event) => {
+    const key = event as KeyboardEvent;
+    if (key.key !== "Enter" || key.isComposing) return;
+    if (key.shiftKey || key.ctrlKey || key.altKey || key.metaKey) return;
+    onSend();
+  };
+  const onClick = (event: Event) => {
+    if (!(event.target instanceof Element)) return;
+    const button = event.target.closest(SEND_BUTTON);
+    if (!button || !scope.contains(button)) return;
+    if (button.matches(":disabled, [aria-disabled='true']")) return;
+    onSend();
+  };
+  const onSubmit = (event: Event) => {
+    const form = event.target;
+    if (form instanceof Node && (form === editor || form.contains(editor))) onSend();
+  };
+  editor.addEventListener("keydown", onKeyDown);
+  doc.addEventListener("click", onClick, true);
+  doc.addEventListener("submit", onSubmit, true);
+  return () => {
+    editor.removeEventListener("keydown", onKeyDown);
+    doc.removeEventListener("click", onClick, true);
+    doc.removeEventListener("submit", onSubmit, true);
+  };
+}
+
 export interface InsertionPoint {
   insert(text: string): boolean;
   dispose(): void;

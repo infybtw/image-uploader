@@ -406,7 +406,7 @@ function buildPanel(doc: Document, settings: SettingsController, accounts?: Acco
   const autoInsert = toggleRow(
     doc,
     "Auto-insert uploaded links",
-    "Adds the link to your draft, but never sends it. The upload notification closes after 3 seconds.",
+    "Adds the link to your draft, but never sends it. The upload notification stays open until you send the message.",
     settings.get().autoInsert,
     (checked) => settings.update({ autoInsert: checked }),
   );

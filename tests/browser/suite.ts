@@ -1,4 +1,4 @@
-import { captureInsertionPoint, findEditor } from "../../src/editor";
+import { captureInsertionPoint, findEditor, observeSend } from "../../src/editor";
 import { browser } from "wxt/browser";
 import { serializeImage } from "../../src/clipboard";
 import { errorMessage } from "../../src/shared";
@@ -490,6 +490,42 @@ test("stateful editors never receive DOM-only fallback edits", () => {
     assert(field.textContent === "draft", "stateful editor DOM was changed");
   } finally {
     field.remove();
+  }
+});
+
+test("send detection handles Enter, modifiers and the send button", () => {
+  const field = textarea();
+  const send = document.createElement("button");
+  send.type = "submit";
+  document.body.append(send);
+  const state = { sent: 0 };
+  const expectSent = (count: number, message: string) => {
+    if (state.sent !== count) throw new Error(`${message}: got ${state.sent} sends`);
+  };
+  const stop = observeSend(field, () => state.sent++);
+  try {
+    for (const init of [
+      { key: "Enter", shiftKey: true },
+      { key: "Enter", ctrlKey: true },
+      { key: "Enter", metaKey: true },
+      { key: "Enter", altKey: true },
+      { key: "a" },
+      { key: "Enter", isComposing: true },
+    ])
+      field.dispatchEvent(new KeyboardEvent("keydown", { ...init, bubbles: true }));
+    expectSent(0, "a newline or shortcut was treated as sending");
+    field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expectSent(1, "Enter did not count as sending");
+    send.click();
+    expectSent(2, "send button did not count as sending");
+    send.disabled = true;
+    send.click();
+    expectSent(2, "disabled send button counted as sending");
+    stop();
+    field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expectSent(2, "stopped detector still fired");
+  } finally {
+    send.remove();
   }
 });
 
@@ -1501,29 +1537,33 @@ async function checkNoticeCountdown() {
       },
     );
 
-    await check(
-      "automatic insertion countdown dismisses the notice after three seconds",
-      async () => {
-        try {
-          notify(
-            "Uploaded and inserted into chat. Copy the link:",
-            ["https://twir.app/u/test"],
-            true,
-            3_000,
-          );
-          const countdown = root.querySelector<HTMLElement>(".countdown")!;
-          assert(!countdown.hidden, "automatic insertion countdown missing");
-          assert(
-            getComputedStyle(countdown.firstElementChild!).animationDuration === "3s",
-            "wrong automatic insertion countdown duration",
-          );
-          await waitForDismiss();
-          assert(!host.isConnected, "automatic insertion notice did not close");
-        } finally {
-          root.querySelector<HTMLButtonElement>("header button")!.click();
-        }
-      },
-    );
+    await check("automatic insertion notice stays open until the message is sent", async () => {
+      const field = textarea("https://twir.app/u/test");
+      try {
+        notify(
+          "Uploaded and inserted into chat. Copy the link:",
+          ["https://twir.app/u/test"],
+          true,
+          { dismissOnSend: field },
+        );
+        const countdown = root.querySelector<HTMLElement>(".countdown")!;
+        assert(countdown.hidden, "automatic insertion started a countdown");
+        assert(host.isConnected, "automatic insertion notice missing");
+        await waitForDismiss();
+        assert(host.isConnected, "automatic insertion notice closed without sending");
+        field.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Enter", shiftKey: true, bubbles: true }),
+        );
+        assert(host.isConnected, "a chat newline dismissed the notice");
+        field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+        assert(!host.isConnected, "sending the message did not dismiss the notice");
+        await tick();
+        assert(!host.isConnected, "dismissed auto-insert notice was remounted");
+      } finally {
+        field.remove();
+        root.querySelector<HTMLButtonElement>("header button")!.click();
+      }
+    });
 
     await check(
       "failed retry cancels an active countdown and leaves the notice visible",

@@ -10,8 +10,6 @@ import { createSettings, DEFAULT_SETTINGS, type SettingsController } from "./set
 import { registerSettingsUi } from "./settings-ui";
 import type { Accounts } from "./accounts";
 
-export const AUTO_INSERT_DISMISS_MS = 3_000;
-
 export function registerPasteHandler(
   upload: (image: ImagePayload) => Promise<string>,
   writeText?: WriteText,
@@ -100,7 +98,7 @@ export function registerPasteHandler(
                 : "Uploaded. Copy the link:",
               urls,
               true,
-              inserted ? AUTO_INSERT_DISMISS_MS : undefined,
+              inserted ? { dismissOnSend: editor } : undefined,
             );
           } catch (error) {
             console.error(`[Viewer Companion] ${stage}`, error);
