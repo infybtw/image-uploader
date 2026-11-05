@@ -1,5 +1,5 @@
 import { getPastedImages, serializeImage } from "./clipboard";
-import { captureInsertionPoint, findEditor } from "./editor";
+import { captureInsertionPoint, findEditor, replaceText } from "./editor";
 import { createNotice } from "./notice";
 import { findChatInput } from "./notice-placement";
 import { errorMessage, isAllowedPage, validateImage, type ImagePayload } from "./shared";
@@ -67,6 +67,7 @@ export function registerPasteHandler(
         const notify = createNotice(writeText, findChatInput(editor), {
           files: originals,
           upload: async (file) => upload(await serializeImage(file)),
+          replace: (from, to) => replaceText(editor, from, to),
         });
         busy = true;
         void (async () => {

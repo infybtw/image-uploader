@@ -80,6 +80,117 @@ export function observeSend(editor: Editor, onSend: () => void): () => void {
   };
 }
 
+function findTextRange(editor: HTMLElement, needle: string): Range | null {
+  const doc = editor.ownerDocument;
+  const walker = doc.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (!(node instanceof Text)) continue;
+    const index = node.data.indexOf(needle);
+    if (index === -1) continue;
+    const range = doc.createRange();
+    range.setStart(node, index);
+    range.setEnd(node, index + needle.length);
+    return range;
+  }
+  return null;
+}
+
+function countText(editor: HTMLElement, needle: string): number {
+  let count = 0;
+  const walker = editor.ownerDocument.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (!(node instanceof Text)) continue;
+    let index = node.data.indexOf(needle);
+    while (index !== -1) {
+      count++;
+      index = node.data.indexOf(needle, index + needle.length);
+    }
+  }
+  return count;
+}
+
+function replaceTextFieldValue(editor: TextField, from: string, to: string): boolean {
+  const value = editor.value;
+  if (!value.includes(from)) return false;
+  const prototype =
+    editor instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
+  if (!setter) return false;
+  const start = editor.selectionStart;
+  const end = editor.selectionEnd;
+  const mapPosition = (position: number) => {
+    let shift = 0;
+    let index = value.indexOf(from);
+    while (index !== -1) {
+      const matchEnd = index + from.length;
+      if (matchEnd <= position) shift += to.length - from.length;
+      else if (index < position) return Math.max(0, index + shift + to.length);
+      else break;
+      index = value.indexOf(from, matchEnd);
+    }
+    return position + shift;
+  };
+  const next = value.split(from).join(to);
+  setter.call(editor, next);
+  if (start !== null) {
+    const nextStart = Math.max(0, Math.min(next.length, mapPosition(start)));
+    const nextEnd =
+      end === null ? nextStart : Math.max(nextStart, Math.min(next.length, mapPosition(end)));
+    editor.setSelectionRange(nextStart, nextEnd);
+  }
+  editor.dispatchEvent(
+    new InputEvent("input", { bubbles: true, inputType: "insertText", data: to }),
+  );
+  return true;
+}
+
+function replaceContentEditableValue(editor: HTMLElement, from: string, to: string): boolean {
+  const doc = editor.ownerDocument;
+  let remaining = countText(editor, from);
+  if (!remaining) return false;
+  const selection = doc.getSelection();
+  if (!selection) return false;
+  const previous = doc.activeElement;
+  // execCommand and editor beforeinput handlers only act on a focused editor.
+  editor.focus({ preventScroll: true });
+  if (doc.activeElement !== editor && !editor.contains(doc.activeElement)) return false;
+  let replaced = 0;
+  while (remaining > 0) {
+    const range = findTextRange(editor, from);
+    if (!range) break;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    const before = editor.textContent;
+    // execCommand produces a real beforeinput with target ranges, which rich
+    // editors use to replace the selected text. A synthetic beforeinput has no
+    // target ranges, so Slate/Lexical would insert at their stale internal
+    // selection instead of replacing the link.
+    doc.execCommand("insertText", false, to);
+    if (editor.textContent === before) break;
+    const next = countText(editor, from);
+    replaced++;
+    // Stop if the new value still contains the old one; an unbounded loop
+    // could duplicate the URL.
+    if (next >= remaining) break;
+    remaining = next;
+  }
+  if (
+    replaced &&
+    previous instanceof HTMLElement &&
+    previous !== doc.activeElement &&
+    previous.isConnected
+  )
+    previous.focus({ preventScroll: true });
+  return replaced > 0;
+}
+
+export function replaceText(editor: Editor, from: string, to: string): boolean {
+  if (!from || from === to) return false;
+  return isTextField(editor)
+    ? replaceTextFieldValue(editor, from, to)
+    : replaceContentEditableValue(editor, from, to);
+}
+
 export interface InsertionPoint {
   insert(text: string): boolean;
   dispose(): void;

@@ -18,7 +18,11 @@ export interface NoticeUpdateOptions {
 export function createNotice(
   writeText?: WriteText,
   chatInput: Element | null = null,
-  editing?: { files: Map<string, File>; upload: (file: File) => Promise<string> },
+  editing?: {
+    files: Map<string, File>;
+    upload: (file: File) => Promise<string>;
+    replace?: (from: string, to: string) => void;
+  },
 ) {
   const noticeId = ++latestNoticeId;
   const host = document.createElement("div");
@@ -179,17 +183,30 @@ export function createNotice(
             event.preventDefault();
             event.stopPropagation();
             cancelDismiss();
-            closeEditor = openImageEditor(file, preview, async (edited) => {
-              const nextUrl = await editing.upload(edited);
-              editing.files.set(nextUrl, edited);
-              const nextUrls = [...urls];
-              nextUrls[index] = nextUrl;
-              if (!nextUrls.includes(url)) editing.files.delete(url);
-              notify("Edited image uploaded. Copy the link:", nextUrls, true);
-              return (
-                links.children[index]?.querySelector<HTMLAnchorElement>(".preview") ?? undefined
-              );
-            });
+            let replacement: { from: string; to: string } | undefined;
+            closeEditor = openImageEditor(
+              file,
+              preview,
+              async (edited) => {
+                const nextUrl = await editing.upload(edited);
+                editing.files.set(nextUrl, edited);
+                const nextUrls = [...urls];
+                nextUrls[index] = nextUrl;
+                if (!nextUrls.includes(url)) editing.files.delete(url);
+                notify("Edited image uploaded. Copy the link:", nextUrls, true);
+                if (noticeId === latestNoticeId && nextUrl !== url)
+                  replacement = { from: url, to: nextUrl };
+                return (
+                  links.children[index]?.querySelector<HTMLAnchorElement>(".preview") ?? undefined
+                );
+              },
+              () => {
+                const next = replacement;
+                replacement = undefined;
+                // The editor modal is closed now, so the chat input is editable again.
+                if (next) editing.replace?.(next.from, next.to);
+              },
+            );
           });
         } else bindImageViewer(preview, image);
         image.addEventListener("error", () => preview.remove(), { once: true });

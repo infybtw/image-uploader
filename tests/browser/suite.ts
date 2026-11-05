@@ -1,4 +1,4 @@
-import { captureInsertionPoint, findEditor, observeSend } from "../../src/editor";
+import { captureInsertionPoint, findEditor, observeSend, replaceText } from "../../src/editor";
 import { browser } from "wxt/browser";
 import { serializeImage } from "../../src/clipboard";
 import { errorMessage } from "../../src/shared";
@@ -468,6 +468,84 @@ test("rich editors insert through beforeinput instead of execCommand", () => {
     assert(point.insert("https://twir.app/u/test"), "editor insertion rejected");
     assert(inserted === "https://twir.app/u/test", "beforeinput did not carry the link");
     assert(field.textContent === "drafthttps://twir.app/u/test", "editor state not updated");
+  } finally {
+    field.remove();
+  }
+});
+
+test("textarea: replaces a link in place and keeps the caret", () => {
+  const field = textarea("before https://twir.app/u/old after");
+  const next = "https://twir.app/u/edited";
+  field.setSelectionRange(field.value.length, field.value.length);
+  let inputs = 0;
+  field.addEventListener("input", () => inputs++);
+  try {
+    assert(replaceText(field, "https://twir.app/u/old", next), "link not replaced");
+    assert(field.value === `before ${next} after`, `unexpected value: ${field.value}`);
+    assert(
+      field.selectionStart === field.value.length && field.selectionEnd === field.value.length,
+      "caret not kept at the end of the draft",
+    );
+    assert(inputs === 1, "input event was not emitted");
+    assert(!replaceText(field, "https://twir.app/u/missing", "x"), "missing link replaced");
+  } finally {
+    field.remove();
+  }
+});
+
+test("contenteditable: replaces a link and restores focus", () => {
+  const field = document.createElement("div");
+  field.contentEditable = "true";
+  field.textContent = "before https://twir.app/u/old after";
+  const other = document.createElement("button");
+  document.body.append(field, other);
+  other.focus();
+  const next = "https://twir.app/u/edited";
+  let inputs = 0;
+  field.addEventListener("input", () => inputs++);
+  try {
+    assert(replaceText(field, "https://twir.app/u/old", next), "link not replaced");
+    assert(field.textContent === `before ${next} after`, `unexpected text: ${field.textContent}`);
+    assert(inputs === 1, "input event was not emitted");
+    assert(document.activeElement === other, "focus not restored after replacement");
+  } finally {
+    field.remove();
+    other.remove();
+  }
+});
+
+test("rich editors replace links using the real beforeinput target range", () => {
+  const field = document.createElement("div");
+  field.contentEditable = "true";
+  field.setAttribute("data-slate-editor", "true");
+  field.textContent = "draft https://twir.app/u/old";
+  document.body.append(field);
+  // Mimic Slate/Lexical: stateful editors keep their own selection at the end
+  // and only trust the target range carried by a real beforeinput event.
+  field.addEventListener("beforeinput", (event) => {
+    const input = event as InputEvent;
+    if (input.inputType !== "insertText") return;
+    event.preventDefault();
+    const range = document.createRange();
+    const target = input.getTargetRanges()[0];
+    if (target) {
+      range.setStart(target.startContainer, target.startOffset);
+      range.setEnd(target.endContainer, target.endOffset);
+    } else {
+      range.selectNodeContents(field);
+      range.collapse(false);
+    }
+    range.deleteContents();
+    range.insertNode(document.createTextNode(input.data ?? ""));
+    field.normalize();
+  });
+  const next = "https://twir.app/u/edited";
+  try {
+    assert(replaceText(field, "https://twir.app/u/old", next), "rich link not replaced");
+    assert(
+      field.textContent === `draft ${next}`,
+      `rich editor appended instead of replacing: ${field.textContent}`,
+    );
   } finally {
     field.remove();
   }
@@ -1439,12 +1517,14 @@ async function checkNoticeCountdown() {
         const file = await editorFixture();
         const urls = ["https://twir.app/u/Original", "https://twir.app/u/Other"];
         const nextUrl = "https://twir.app/u/Edited";
+        const field = textarea(`Draft ${urls[0]}`);
         const files = new Map([
           [urls[0]!, file],
           [urls[1]!, file],
         ]);
         const pending = Promise.withResolvers<string>();
         let copied = "";
+        let replacedWhileOpen: boolean | undefined;
         const { notify, root } = testNotice(
           async (text) => {
             copied = text;
@@ -1453,6 +1533,10 @@ async function checkNoticeCountdown() {
           {
             files,
             upload: () => pending.promise,
+            replace: (from, to) => {
+              replacedWhileOpen = Boolean(document.querySelector("[data-imageuploader-editor]"));
+              replaceText(field, from, to);
+            },
           },
         );
         try {
@@ -1476,6 +1560,8 @@ async function checkNoticeCountdown() {
           for (let count = 0; editorHost.isConnected && count < 100; count++)
             await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
           assert(!editorHost.isConnected, "successful editor did not close");
+          assert(replacedWhileOpen === false, "draft was edited while the editor was still open");
+          assert(field.value === `Draft ${nextUrl}`, `draft not updated: ${field.value}`);
           const inputs = root.querySelectorAll("input");
           assert(
             inputs[0]!.value === nextUrl && inputs[1]!.value === urls[1],
@@ -1493,6 +1579,7 @@ async function checkNoticeCountdown() {
           await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
           assert(copied === nextUrl, "copy button still copies original link");
         } finally {
+          field.remove();
           root.querySelector<HTMLButtonElement>("header button")!.click();
         }
       },

@@ -28,6 +28,7 @@ export function openImageEditor(
   file: File,
   opener: HTMLElement,
   upload: (file: File) => Promise<HTMLElement | void>,
+  onClosed?: () => void,
 ): () => void {
   const owner = opener.ownerDocument;
   if (!owner.body) return () => {};
@@ -166,7 +167,13 @@ export function openImageEditor(
       if (previousOverflow) pageStyle.setProperty("overflow", previousOverflow, previousPriority);
       else pageStyle.removeProperty("overflow");
     }
-    if (focusTarget.isConnected) focusTarget.focus({ preventScroll: true });
+    // Run after the modal is gone so callers can edit the page again, then put
+    // focus back where the editor promised it.
+    try {
+      onClosed?.();
+    } finally {
+      if (focusTarget.isConnected) focusTarget.focus({ preventScroll: true });
+    }
   };
   const button = (label: string, action: () => void) => {
     const element = owner.createElement("button");
